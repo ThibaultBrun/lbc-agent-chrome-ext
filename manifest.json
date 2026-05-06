@@ -35,8 +35,8 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content/overlay.css"],
-      "matches": ["https://www.leboncoin.fr/*"]
+      "resources": ["content/overlay.css", "dist/webllm.bundle.js", "dist/*"],
+      "matches": ["https://www.leboncoin.fr/*", "<all_urls>"]
     }
   ]
 }

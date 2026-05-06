@@ -12,20 +12,33 @@ L'analyse s'affiche dans un **overlay flottant** injecté en bas à droite de l'
 
 ## Backends LLM
 
-L'extension supporte deux backends :
+Trois backends supportés, sélectionnés en cascade en mode `auto` :
 
-- **Gemini Nano** (intégré à Chrome 127+, zéro install) via l'API [LanguageModel](https://developer.chrome.com/docs/ai/built-in)
-- **Ollama** local (recommandé) — qualité supérieure pour l'extraction structurée et la synthèse
+1. **Ollama** local (recommandé, qualité maximale) — détecté via `http://localhost:11434/api/tags`
+2. **WebLLM** (zéro install, WebGPU) — Llama 3.1 8B / Mistral 7B / Qwen 2.5 / Phi 3.5 dans le navigateur via [@mlc-ai/web-llm](https://github.com/mlc-ai/web-llm). La première utilisation télécharge le modèle (2-5 Go), stocké localement par Chrome.
+3. **Gemini Nano** intégré à Chrome 127+ — fallback minimal, qualité limitée (Gemini Nano 3-4B)
 
-En mode `auto` : Ollama si disponible (`http://localhost:11434/api/tags` répond), sinon fallback Gemini Nano.
-
-> ⚠️ Une extension Chrome ne peut pas installer Ollama elle-même. Elle peut le **détecter** et l'utiliser. Pour installer : `winget install Ollama.Ollama` puis `ollama pull llama3.2:3b mistral:7b`.
+> ⚠️ Une extension Chrome ne peut pas installer Ollama. Pour la qualité max : `winget install Ollama.Ollama` puis `ollama pull llama3.2:3b mistral:7b`. Sans Ollama, **WebLLM est le défaut recommandé** — un seul téléchargement initial, ensuite tout est local.
 
 ## Installation
 
-1. Cloner le dépôt
+1. Cloner le dépôt :
+   ```powershell
+   git clone https://github.com/ThibaultBrun/lbc-agent-chrome-ext.git
+   cd lbc-agent-chrome-ext
+   ```
 2. `chrome://extensions` → Mode développeur → **Charger l'extension non empaquetée** → sélectionner ce dossier
-3. Ouvrir une annonce vélo sur leboncoin.fr → l'overlay apparaît automatiquement
+3. Ouvrir une annonce vélo sur leboncoin.fr → l'overlay apparaît automatiquement en bas à droite
+
+Le bundle WebLLM est commité dans `dist/`, donc **aucun build n'est requis** pour utiliser l'extension.
+
+### Build local (uniquement pour développer)
+
+```powershell
+npm install
+npm run build      # bundle dist/webllm.bundle.js (~6 Mo)
+npm run watch      # rebuild auto en dev
+```
 
 ### Activer Gemini Nano (si pas d'Ollama)
 

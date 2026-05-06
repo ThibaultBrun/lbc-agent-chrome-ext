@@ -17,11 +17,14 @@
         <div class="field">
           <label>Mode</label>
           <select id="llmMode">
-            <option value="auto">Auto (Ollama si dispo, sinon Gemini Nano)</option>
+            <option value="auto">Auto (Ollama → WebLLM → Gemini Nano)</option>
             <option value="ollama">Ollama uniquement</option>
+            <option value="webllm">WebLLM uniquement (WebGPU)</option>
             <option value="nano">Gemini Nano uniquement</option>
           </select>
         </div>
+
+        <h3 class="sub">Ollama (recommandé pour la qualité)</h3>
         <div class="field">
           <label>URL Ollama</label>
           <input type="text" id="ollamaUrl" placeholder="http://localhost:11434" />
@@ -34,6 +37,14 @@
           <label>Modèle de synthèse</label>
           <input type="text" id="ollamaSynthModel" placeholder="mistral:7b" />
         </div>
+
+        <h3 class="sub">WebLLM (zéro install, WebGPU)</h3>
+        <div class="field">
+          <label>Modèle WebLLM</label>
+          <select id="webllmModel"></select>
+          <small class="muted">La première utilisation télécharge le modèle (2-5 Go). Stocké localement par le navigateur.</small>
+        </div>
+
         <button id="btn-probe" class="secondary">Tester les backends</button>
         <pre id="probe-output"></pre>
       </section>

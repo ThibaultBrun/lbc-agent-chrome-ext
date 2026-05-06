@@ -1,15 +1,110 @@
-// Offscreen document — exécute les appels Gemini Nano (`LanguageModel`),
-// que le service worker ne peut pas faire car cette API n'est exposée
-// que dans des contextes fenêtre.
+// Offscreen document — héberge les backends qui ne marchent pas dans un service worker :
+// 1) Gemini Nano (`LanguageModel`) — exposé en contexte fenêtre uniquement
+// 2) WebLLM (WebGPU) — WebGPU est dispo dans les contextes fenêtre
 
-let cachedSession = null;
+let webllmEngine = null;
+let webllmCurrentModel = null;
+let webllmModulePromise = null;
 
-async function getSession(systemPrompt) {
-  if (!("LanguageModel" in self)) throw new Error("LanguageModel API non disponible. Activez chrome://flags/#prompt-api-for-gemini-nano et téléchargez Gemini Nano via chrome://components.");
+async function loadWebllm() {
+  if (!webllmModulePromise) {
+    webllmModulePromise = import(chrome.runtime.getURL("dist/webllm.bundle.js"));
+  }
+  return webllmModulePromise;
+}
+
+async function probeWebllm() {
+  // 1. WebGPU dispo ?
+  if (typeof navigator === "undefined" || !navigator.gpu) {
+    return { available: false, reason: "no_webgpu" };
+  }
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) return { available: false, reason: "no_adapter" };
+  } catch (e) {
+    return { available: false, reason: "adapter_error", error: String(e?.message || e) };
+  }
+  // 2. Module WebLLM importable ?
+  try {
+    const m = await loadWebllm();
+    return {
+      available: true,
+      cached: false, // hasModelInCache nécessiterait un model_id ; on laisse au flow d'init
+      hasHelper: typeof m.hasModelInCache === "function",
+    };
+  } catch (e) {
+    return { available: false, reason: "module_load_failed", error: String(e?.message || e) };
+  }
+}
+
+async function ensureWebllmEngine(modelId, requestId) {
+  if (webllmEngine && webllmCurrentModel === modelId) return webllmEngine;
+  const m = await loadWebllm();
+  // Si on change de modèle, on jette l'ancien
+  if (webllmEngine && webllmCurrentModel !== modelId) {
+    try { await webllmEngine.unload?.(); } catch { /* ignore */ }
+    webllmEngine = null;
+  }
+  webllmEngine = await m.CreateMLCEngine(modelId, {
+    initProgressCallback: (p) => {
+      chrome.runtime.sendMessage({
+        type: "webllm:progress",
+        requestId,
+        text: p.text,
+        progress: p.progress,
+      });
+    },
+  });
+  webllmCurrentModel = modelId;
+  return webllmEngine;
+}
+
+function safeSchemaForWebllm(schema) {
+  // WebLLM/MLC accepte response_format = { type: "json_object" } ou
+  // { type: "grammar", grammar: "..." }. Pour rester simple et stable, on demande
+  // json_object et on parse côté client. Le schema sert juste à renforcer le prompt.
+  return { type: "json_object" };
+}
+
+async function webllmChat({ requestId, model, system, prompt, schema, stream }) {
+  const engine = await ensureWebllmEngine(model, requestId);
+  const messages = [
+    { role: "system", content: system || "Tu es un assistant utile." },
+    { role: "user", content: schema ? `${prompt}\n\nReponds UNIQUEMENT en JSON strict valide, sans markdown.` : prompt },
+  ];
+  const baseRequest = {
+    messages,
+    temperature: schema ? 0 : 0.2,
+    max_tokens: 2000,
+  };
+  if (schema) baseRequest.response_format = safeSchemaForWebllm(schema);
+
+  if (stream) {
+    let full = "";
+    const it = await engine.chat.completions.create({ ...baseRequest, stream: true });
+    for await (const chunk of it) {
+      const delta = chunk.choices?.[0]?.delta?.content || "";
+      if (delta) {
+        full += delta;
+        chrome.runtime.sendMessage({ type: "webllm:chunk", requestId, delta });
+      }
+    }
+    return full;
+  }
+  const out = await engine.chat.completions.create(baseRequest);
+  return out.choices?.[0]?.message?.content || "";
+}
+
+// ─── Gemini Nano ───────────────────────────────────────────────────────
+
+let nanoSession = null;
+
+async function getNanoSession(systemPrompt) {
+  if (!("LanguageModel" in self)) throw new Error("LanguageModel API non disponible. Activez chrome://flags/#prompt-api-for-gemini-nano.");
   const availability = await self.LanguageModel.availability();
   if (availability === "unavailable") throw new Error("Gemini Nano non disponible sur cet appareil");
-  if (cachedSession) return cachedSession;
-  cachedSession = await self.LanguageModel.create({
+  if (nanoSession) return nanoSession;
+  nanoSession = await self.LanguageModel.create({
     initialPrompts: [{ role: "system", content: systemPrompt || "Tu es un assistant utile." }],
     monitor(m) {
       m.addEventListener("downloadprogress", (e) => {
@@ -17,38 +112,72 @@ async function getSession(systemPrompt) {
       });
     },
   });
-  return cachedSession;
+  return nanoSession;
 }
 
-chrome.runtime.onMessage.addListener(async (msg) => {
-  if (msg?.type !== "nano:request") return;
-  const { requestId, prompt, system, schema, stream } = msg;
-  try {
-    // Une session par appel pour les requêtes JSON-typées (schema), sinon partage
-    if (schema) {
-      const session = await self.LanguageModel.create({
-        initialPrompts: [{ role: "system", content: system || "Tu es un extracteur. Tu reponds en JSON strict." }],
-      });
-      const text = await session.prompt(prompt, { responseConstraint: schema });
-      session.destroy?.();
-      chrome.runtime.sendMessage({ type: "nano:done", requestId, text });
-      return;
+async function nanoChat({ requestId, prompt, system, schema, stream }) {
+  if (schema) {
+    const session = await self.LanguageModel.create({
+      initialPrompts: [{ role: "system", content: system || "Tu es un extracteur. Tu reponds en JSON strict." }],
+    });
+    const text = await session.prompt(prompt, { responseConstraint: schema });
+    session.destroy?.();
+    return text;
+  }
+  const session = await getNanoSession(system);
+  if (stream) {
+    let full = "";
+    const s = session.promptStreaming(prompt);
+    for await (const chunk of s) {
+      full += chunk;
+      chrome.runtime.sendMessage({ type: "nano:chunk", requestId, delta: chunk });
     }
+    return full;
+  }
+  return session.prompt(prompt);
+}
 
-    const session = await getSession(system);
-    if (stream) {
-      let full = "";
-      const s = session.promptStreaming(prompt);
-      for await (const chunk of s) {
-        full += chunk;
-        chrome.runtime.sendMessage({ type: "nano:chunk", requestId, delta: chunk });
+// ─── Routeur ────────────────────────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener(async (msg) => {
+  if (!msg || typeof msg !== "object") return;
+
+  if (msg.type === "webllm:probe") {
+    const result = await probeWebllm();
+    chrome.runtime.sendMessage({ type: "webllm:probe_done", requestId: msg.requestId, result });
+    return;
+  }
+  if (msg.type === "nano:probe") {
+    let result = { available: false };
+    try {
+      if ("LanguageModel" in self) {
+        const av = await self.LanguageModel.availability();
+        result = { available: av !== "unavailable", availability: av };
+      } else {
+        result = { available: false, reason: "no_LanguageModel_api" };
       }
-      chrome.runtime.sendMessage({ type: "nano:done", requestId, text: full });
-    } else {
-      const text = await session.prompt(prompt);
-      chrome.runtime.sendMessage({ type: "nano:done", requestId, text });
+    } catch (e) {
+      result = { available: false, error: String(e?.message || e) };
     }
-  } catch (e) {
-    chrome.runtime.sendMessage({ type: "nano:error", requestId, error: String(e?.message || e) });
+    chrome.runtime.sendMessage({ type: "nano:probe_done", requestId: msg.requestId, result });
+    return;
+  }
+  if (msg.type === "webllm:request") {
+    try {
+      const text = await webllmChat(msg);
+      chrome.runtime.sendMessage({ type: "webllm:done", requestId: msg.requestId, text });
+    } catch (e) {
+      chrome.runtime.sendMessage({ type: "webllm:error", requestId: msg.requestId, error: String(e?.message || e) });
+    }
+    return;
+  }
+  if (msg.type === "nano:request") {
+    try {
+      const text = await nanoChat(msg);
+      chrome.runtime.sendMessage({ type: "nano:done", requestId: msg.requestId, text });
+    } catch (e) {
+      chrome.runtime.sendMessage({ type: "nano:error", requestId: msg.requestId, error: String(e?.message || e) });
+    }
+    return;
   }
 });

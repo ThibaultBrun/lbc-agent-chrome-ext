@@ -1,7 +1,8 @@
 // Options page — load/save settings, probe backends, clear cache.
+import { WEBLLM_MODELS } from "../lib/config.js";
 
 const FIELDS = [
-  "llmMode", "ollamaUrl", "ollamaExtractModel", "ollamaSynthModel",
+  "llmMode", "ollamaUrl", "ollamaExtractModel", "ollamaSynthModel", "webllmModel",
   "fetchPages", "enableLbcComparables", "enableTrocVeloComparables", "maxWebResults",
 ];
 
@@ -17,6 +18,16 @@ function getVal(id) {
   if (el.type === "checkbox") return el.checked;
   if (el.type === "number") return parseInt(el.value, 10) || 0;
   return el.value;
+}
+
+function fillWebllmModels() {
+  const sel = document.getElementById("webllmModel");
+  for (const m of WEBLLM_MODELS) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.label;
+    sel.appendChild(opt);
+  }
 }
 
 function load() {
@@ -43,7 +54,9 @@ function probe() {
     const lines = [];
     lines.push(`Backend sélectionné : ${r.backend?.kind || "—"}`);
     lines.push(`Ollama dispo : ${r.ollama.available ? "oui" : "non"}`);
-    if (r.ollama.available) lines.push(`Modèles : ${r.ollama.models.join(", ") || "(aucun)"}`);
+    if (r.ollama.available) lines.push(`  Modèles : ${r.ollama.models.join(", ") || "(aucun)"}`);
+    lines.push(`WebLLM dispo : ${r.webllm?.available ? "oui" : "non"}${r.webllm?.reason ? ` (${r.webllm.reason})` : ""}`);
+    lines.push(`Gemini Nano : ${r.nano?.available ? "oui" : "non"}`);
     out.textContent = lines.join("\n");
   });
 }
@@ -57,6 +70,7 @@ function clearCache() {
   });
 }
 
+fillWebllmModels();
 document.getElementById("btn-save").addEventListener("click", save);
 document.getElementById("btn-probe").addEventListener("click", probe);
 document.getElementById("btn-clear-cache").addEventListener("click", clearCache);

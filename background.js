@@ -3,7 +3,7 @@
 // Nano à un offscreen document (chrome.offscreen API).
 
 import { enrichAd, LlmRouter } from "./lib/pipeline.js";
-import { getSettings, saveSettings, probeOllama, selectBackend } from "./lib/llm.js";
+import { getSettings, saveSettings, probeOllama, probeWebllm, selectBackend } from "./lib/llm.js";
 import { cacheClear } from "./lib/utils.js";
 
 let creatingOffscreen = null;
@@ -19,35 +19,41 @@ async function ensureOffscreen() {
   creatingOffscreen = null;
 }
 
-// Bridge Nano via offscreen document
-async function nanoBridge({ system, prompt, schema, stream, onChunk }) {
-  await ensureOffscreen();
-  const requestId = `nano_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  return new Promise((resolve, reject) => {
-    const onMessage = (msg) => {
-      if (msg?.type === "nano:chunk" && msg.requestId === requestId) {
-        onChunk?.(msg.delta);
-        return;
-      }
-      if (msg?.type === "nano:done" && msg.requestId === requestId) {
-        chrome.runtime.onMessage.removeListener(onMessage);
-        resolve(msg.text);
-      } else if (msg?.type === "nano:error" && msg.requestId === requestId) {
-        chrome.runtime.onMessage.removeListener(onMessage);
-        reject(new Error(msg.error));
-      }
-    };
-    chrome.runtime.onMessage.addListener(onMessage);
-    chrome.runtime.sendMessage({
-      type: "nano:request",
-      requestId,
-      system,
-      prompt,
-      schema,
-      stream: !!stream,
+// Bridge générique vers offscreen — utilisé pour Nano ET WebLLM.
+// `kind` = "nano" | "webllm". Les events sont préfixés en conséquence.
+function offscreenBridge(kind) {
+  return async function bridge({ system, prompt, schema, stream, onChunk, model, onProgress }) {
+    await ensureOffscreen();
+    const requestId = `${kind}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return new Promise((resolve, reject) => {
+      const onMessage = (msg) => {
+        if (!msg || msg.requestId !== requestId) return;
+        if (msg.type === `${kind}:chunk`) { onChunk?.(msg.delta); return; }
+        if (msg.type === `${kind}:progress`) { onProgress?.(msg); return; }
+        if (msg.type === `${kind}:done`) {
+          chrome.runtime.onMessage.removeListener(onMessage);
+          resolve(msg.text);
+        } else if (msg.type === `${kind}:error`) {
+          chrome.runtime.onMessage.removeListener(onMessage);
+          reject(new Error(msg.error));
+        }
+      };
+      chrome.runtime.onMessage.addListener(onMessage);
+      chrome.runtime.sendMessage({
+        type: `${kind}:request`,
+        requestId,
+        system,
+        prompt,
+        schema,
+        stream: !!stream,
+        model,
+      });
     });
-  });
+  };
 }
+
+const nanoBridge = offscreenBridge("nano");
+const webllmBridge = offscreenBridge("webllm");
 
 // Connexion bidirectionnelle pour le streaming des phases pipeline
 chrome.runtime.onConnect.addListener((port) => {
@@ -61,8 +67,9 @@ chrome.runtime.onConnect.addListener((port) => {
       const settings = await getSettings();
       const backend = await selectBackend(settings);
       port.postMessage({ type: "backend", backend });
-      const llm = new LlmRouter({ backend, nanoBridge });
       const emit = (ev) => { if (!aborted) port.postMessage(ev); };
+      const onProgress = (m) => emit({ type: "model_progress", backend: backend.kind, text: m.text, progress: m.progress, loaded: m.loaded });
+      const llm = new LlmRouter({ backend, nanoBridge, webllmBridge, onProgress });
       await enrichAd({ ad: msg.ad, llm, settings, emit });
     } catch (e) {
       port.postMessage({ type: "error", error: e.message });
@@ -86,8 +93,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       const settings = await getSettings();
       const ollama = await probeOllama(settings.ollamaUrl);
+      const webllm = await probeWebllm();
+      // Le service worker n'a pas LanguageModel : on fait un probe via offscreen.
+      let nano = { available: false };
+      try {
+        await ensureOffscreen();
+        nano = await new Promise((resolve) => {
+          const id = `nanoprobe_${Date.now()}`;
+          const onMsg = (m) => {
+            if (m?.type === "nano:probe_done" && m.requestId === id) {
+              chrome.runtime.onMessage.removeListener(onMsg);
+              resolve(m.result);
+            }
+          };
+          chrome.runtime.onMessage.addListener(onMsg);
+          chrome.runtime.sendMessage({ type: "nano:probe", requestId: id });
+          setTimeout(() => { chrome.runtime.onMessage.removeListener(onMsg); resolve({ available: false, reason: "timeout" }); }, 3000);
+        });
+      } catch { /* ignore */ }
       const backend = await selectBackend(settings);
-      sendResponse({ ollama, backend });
+      sendResponse({ ollama, webllm, nano, backend });
     })();
     return true;
   }

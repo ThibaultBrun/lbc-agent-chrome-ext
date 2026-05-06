@@ -78,6 +78,7 @@
     .deal-bad .value { color: #ff6b6b; } .deal-bad .gauge .fill { background: #ff6b6b; }
     .deal-mid .value { color: #ffb84d; } .deal-mid .gauge .fill { background: #ffb84d; }
     .deal-good .value { color: #4dd987; } .deal-good .gauge .fill { background: #4dd987; }
+    .progress-text { font-size: 12px; color: #cfdcff; font-family: monospace; }
     .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .pros, .cons { display: flex; flex-direction: column; gap: 4px; }
     .pros li { color: #4dd987; }
@@ -173,6 +174,12 @@
       PHASES_DEF.map((p) => el("div", { class: "phase", id: `phase-${p.id}` }, p.label)),
     );
 
+    const progressCard = el("div", { class: "card hidden", id: "progress-card" }, [
+      el("h3", {}, "Téléchargement modèle"),
+      el("div", { class: "progress-text", id: "progress-text" }, "…"),
+      el("div", { class: "gauge", style: "margin-top: 8px;" }, [el("div", { class: "fill", id: "progress-fill", style: "width: 0%; background: #4a86ff;" })]),
+    ]);
+
     const identityCard = el("div", { class: "card hidden", id: "identity-card" }, [
       el("h3", {}, "Identité"),
       el("div", { class: "identity", id: "identity-body" }),
@@ -217,6 +224,7 @@
 
     main.appendChild(adLine);
     main.appendChild(phasesEl);
+    main.appendChild(progressCard);
     main.appendChild(identityCard);
     main.appendChild(pricesCard);
     main.appendChild(scoresCard);
@@ -359,7 +367,17 @@
       if (msg.type === "log") appendLog(shadow, msg.message);
       else if (msg.type === "backend") {
         const b = shadow.getElementById("backend-badge");
-        b.textContent = msg.backend.kind === "ollama" ? "Ollama" : (msg.backend.kind === "nano" ? "Gemini Nano" : "—");
+        const labels = { ollama: "Ollama", webllm: "WebLLM", nano: "Gemini Nano", none: "—" };
+        b.textContent = labels[msg.backend.kind] || "—";
+      }
+      else if (msg.type === "model_progress") {
+        const card = shadow.getElementById("progress-card");
+        const txt = shadow.getElementById("progress-text");
+        const fill = shadow.getElementById("progress-fill");
+        card.classList.remove("hidden");
+        if (msg.text) txt.textContent = msg.text;
+        if (typeof msg.progress === "number") fill.style.width = `${Math.round(msg.progress * 100)}%`;
+        if (msg.progress >= 1) setTimeout(() => card.classList.add("hidden"), 1500);
       }
       else if (msg.type === "phase") {
         switch (msg.phase) {

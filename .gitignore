@@ -1,8 +1,11 @@
 .claude/
 node_modules/
-dist/
 *.zip
 .DS_Store
 .vscode/
 .idea/
 *.log
+
+# dist/ est commité pour que l'extension fonctionne sans build (UX charger non empaquetée).
+# La sourcemap reste exclue (volumineuse).
+dist/*.map
