@@ -65,10 +65,15 @@
     .identity .brand-model { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 2px; }
     .identity .meta { color: #9aa0ac; font-size: 12px; }
     .prices-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .price-cell { background: #1a1d23; border-radius: 8px; padding: 8px 10px; text-align: center; }
+    .price-cell { background: #1a1d23; border-radius: 8px; padding: 8px 10px; text-align: center; transition: background 0.15s; }
+    .price-cell.clickable { cursor: pointer; }
+    .price-cell.clickable:hover { background: #232730; }
     .price-cell .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #6f7682; }
     .price-cell .value { font-size: 15px; font-weight: 600; color: #e6e8ee; margin-top: 2px; }
     .price-cell .source { font-size: 10px; color: #6f7682; margin-top: 2px; }
+    .price-cell a.source { color: #cfdcff; text-decoration: none; display: block; }
+    .price-cell a.source::after { content: " ↗"; opacity: 0.6; }
+    .price-cell a.source:hover { text-decoration: underline; }
     .asking-row { display: flex; align-items: baseline; gap: 8px; margin: 8px 0 12px; padding: 10px 12px; background: linear-gradient(135deg, rgba(255,110,20,0.08), rgba(255,110,20,0.02)); border: 1px solid rgba(255,110,20,0.25); border-radius: 8px; }
     .asking-row .label { font-size: 11px; color: #9aa0ac; }
     .asking-row .value { font-size: 18px; font-weight: 700; color: #ff8a3d; }
@@ -344,15 +349,18 @@
     const grid = shadow.getElementById("prices-grid");
     grid.innerHTML = "";
     const cells = [
-      { label: "MSRP catalogue", value: synth.msrp_eur, source: "constructeur" },
-      { label: "Neuf revendeur", value: synth.retail_eur, source: synth.retail_source || "—" },
-      { label: "Marché occasion", value: synth.estimated_market_eur, source: synth._sources?.comparables_count ? `${synth._sources.comparables_count} comp.` : "estimé" },
+      { label: "MSRP catalogue", value: synth.msrp_eur, source: "constructeur", url: synth.msrp_source_url },
+      { label: "Neuf revendeur", value: synth.retail_eur, source: synth.retail_source || "—", url: synth.retail_source_url },
+      { label: "Marché occasion", value: synth.estimated_market_eur, source: synth._sources?.comparables_count ? `${synth._sources.comparables_count} comp.` : "estimé", url: null },
     ];
     for (const c of cells) {
-      grid.appendChild(el("div", { class: "price-cell" }, [
+      const sourceNode = c.url
+        ? el("a", { class: "source link", href: c.url, target: "_blank", rel: "noopener", title: c.url }, c.source)
+        : el("div", { class: "source" }, c.source);
+      grid.appendChild(el("div", { class: "price-cell" + (c.url ? " clickable" : "") }, [
         el("div", { class: "label" }, c.label),
         el("div", { class: "value" }, fmtPrice(c.value)),
-        el("div", { class: "source" }, c.source),
+        sourceNode,
       ]));
     }
     shadow.getElementById("prices-card").classList.remove("hidden");
