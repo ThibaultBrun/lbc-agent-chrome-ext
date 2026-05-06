@@ -351,7 +351,12 @@
     const cells = [
       { label: "MSRP catalogue", value: synth.msrp_eur, source: "constructeur", url: synth.msrp_source_url },
       { label: "Neuf revendeur", value: synth.retail_eur, source: synth.retail_source || "—", url: synth.retail_source_url },
-      { label: "Marché occasion", value: synth.estimated_market_eur, source: synth._sources?.comparables_count ? `${synth._sources.comparables_count} comp.` : "estimé", url: null },
+      {
+        label: "Marché occasion",
+        value: synth.estimated_market_eur,
+        source: synth._sources?.comparables_count ? `${synth._sources.comparables_count} comp.` : "estimé",
+        url: synth.used_source_url || null,
+      },
     ];
     for (const c of cells) {
       const sourceNode = c.url
