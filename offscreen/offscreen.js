@@ -114,27 +114,32 @@ function emitNanoProgress(requestId, e) {
 }
 
 // Crée une session Nano avec progress propagé via le requestId courant.
+// Le message de progress n'est envoyé QUE si le modèle est réellement en cours
+// de download (availability=downloading/downloadable). Si available, silence total.
 async function createNanoSession({ system, requestId }) {
   if (!("LanguageModel" in self)) throw new Error("LanguageModel API non disponible. Activez chrome://flags/#prompt-api-for-gemini-nano.");
   const availability = await self.LanguageModel.availability();
   if (availability === "unavailable") throw new Error("Gemini Nano non disponible sur cet appareil");
-  // Si on est en cours de DL, on prévient l'utilisateur dès le départ
-  if (availability === "downloading" || availability === "downloadable") {
+  const needsDownload = availability === "downloading" || availability === "downloadable";
+  // On ne câble le monitor downloadprogress que si on doit vraiment télécharger.
+  // Sinon, créer la session sans monitor (zéro message envoyé).
+  const opts = {
+    initialPrompts: [{ role: "system", content: system || "Tu es un assistant utile." }],
+    expectedInputs: [{ type: "text", languages: ["fr", "en"] }],
+    expectedOutputs: [{ type: "text", languages: ["fr"] }],
+  };
+  if (needsDownload) {
     chrome.runtime.sendMessage({
       type: "nano:progress",
       requestId,
       progress: 0,
       text: "Téléchargement Gemini Nano · démarrage…",
     });
-  }
-  return self.LanguageModel.create({
-    initialPrompts: [{ role: "system", content: system || "Tu es un assistant utile." }],
-    expectedInputs: [{ type: "text", languages: ["fr", "en"] }],
-    expectedOutputs: [{ type: "text", languages: ["fr"] }],
-    monitor(m) {
+    opts.monitor = (m) => {
       m.addEventListener("downloadprogress", (e) => emitNanoProgress(requestId, e));
-    },
-  });
+    };
+  }
+  return self.LanguageModel.create(opts);
 }
 
 async function nanoChat({ requestId, prompt, system, schema, stream }) {

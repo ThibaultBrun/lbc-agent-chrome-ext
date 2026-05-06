@@ -411,6 +411,9 @@
       label.innerHTML = `<span>Démarrage…</span><span class="pct">0%</span>`;
       fill.style.width = "0%";
     }
+    // Cache la progress de DL modèle (sera re-affichée seulement si le backend en envoie)
+    const dlCard = shadow.getElementById("progress-card");
+    if (dlCard) dlCard.classList.add("hidden");
     port = chrome.runtime.connect({ name: "bike-analyze" });
     port.postMessage({ type: "analyze", ad });
     setPhase(shadow, "identity", "active");
