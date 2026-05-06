@@ -135,6 +135,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// Migration des settings : tourne a chaque demarrage du service worker.
+// Force fetchPages / enable*Comparables a true si jamais ils etaient passes a
+// false par un test precedent (sinon le user voit "comparables 0" en silence).
+function migrateSettings() {
+  chrome.storage.local.get(["settings"], (items) => {
+    const s = items?.settings || {};
+    let changed = false;
+    if (s.fetchPages === false) { s.fetchPages = true; changed = true; }
+    if (s.enableLbcComparables === false) { s.enableLbcComparables = true; changed = true; }
+    if (s.enableTrocVeloComparables === false) { s.enableTrocVeloComparables = true; changed = true; }
+    if (changed) {
+      chrome.storage.local.set({ settings: s }, () => console.log("[LBC Analyzer] migrated settings (forced pipeline options to true)"));
+    }
+  });
+}
+migrateSettings();
+
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("[LBC Bike Analyzer] installed");
+  console.log("[LBC Analyzer] installed");
+  migrateSettings();
 });
