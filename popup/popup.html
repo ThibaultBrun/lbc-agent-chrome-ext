@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>LBC Analyzer</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>LBC Analyzer</h1>
+      <span id="model-status" class="badge">Modèle: …</span>
+    </header>
+
+    <main>
+      <section id="ad-info" class="card hidden">
+        <h2 id="ad-title">—</h2>
+        <p class="meta">
+          <span id="ad-price"></span>
+          <span id="ad-location"></span>
+        </p>
+      </section>
+
+      <section class="actions">
+        <button id="btn-extract">Extraire l'annonce</button>
+        <button id="btn-analyze" disabled>Analyser avec l'IA</button>
+      </section>
+
+      <section id="result" class="card hidden">
+        <h3>Analyse</h3>
+        <div id="result-text"></div>
+      </section>
+
+      <section id="error" class="card error hidden"></section>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
