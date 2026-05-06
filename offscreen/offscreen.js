@@ -116,9 +116,16 @@ function emitNanoProgress(requestId, e) {
 // Crée une session Nano avec progress propagé via le requestId courant.
 // Le message de progress n'est envoyé QUE si le modèle est réellement en cours
 // de download (availability=downloading/downloadable). Si available, silence total.
+const NANO_LANG_OPTS = {
+  expectedInputs: [{ type: "text", languages: ["fr", "en"] }],
+  expectedOutputs: [{ type: "text", languages: ["fr"] }],
+};
+
 async function createNanoSession({ system, requestId }) {
   if (!("LanguageModel" in self)) throw new Error("LanguageModel API non disponible. Activez chrome://flags/#prompt-api-for-gemini-nano.");
-  const availability = await self.LanguageModel.availability();
+  // availability() doit recevoir les memes contraintes de langue que create() pour
+  // retourner un statut coherent et eviter le warning 'No output language specified'.
+  const availability = await self.LanguageModel.availability(NANO_LANG_OPTS);
   if (availability === "unavailable") throw new Error("Gemini Nano non disponible sur cet appareil");
   const needsDownload = availability === "downloading" || availability === "downloadable";
   // On ne câble le monitor downloadprogress que si on doit vraiment télécharger.
@@ -188,7 +195,7 @@ async function handleMessage(msg) {
     let result = { available: false };
     try {
       if ("LanguageModel" in self) {
-        const av = await self.LanguageModel.availability();
+        const av = await self.LanguageModel.availability(NANO_LANG_OPTS);
         result = { available: av !== "unavailable", availability: av };
       } else {
         result = { available: false, reason: "no_LanguageModel_api" };
