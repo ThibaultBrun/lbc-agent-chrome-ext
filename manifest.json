@@ -27,7 +27,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.leboncoin.fr/ad/*"],
+      "matches": ["https://www.leboncoin.fr/*"],
       "js": ["content/extract.js", "content/overlay.js"],
       "css": ["content/overlay.css"],
       "run_at": "document_idle"

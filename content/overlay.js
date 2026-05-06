@@ -79,6 +79,9 @@
     .deal-mid .value { color: #ffb84d; } .deal-mid .gauge .fill { background: #ffb84d; }
     .deal-good .value { color: #4dd987; } .deal-good .gauge .fill { background: #4dd987; }
     .progress-text { font-size: 12px; color: #cfdcff; font-family: monospace; }
+    .analysis-progress { margin-bottom: 10px; }
+    .analysis-label { font-size: 11px; color: #cfdcff; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .analysis-label .pct { color: #ff8a3d; font-weight: 600; }
     .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .pros, .cons { display: flex; flex-direction: column; gap: 4px; }
     .pros li { color: #4dd987; }
@@ -187,6 +190,13 @@
       PHASES_DEF.map((p) => el("div", { class: "phase", id: `phase-${p.id}` }, p.label)),
     );
 
+    // Barre de progression de l'analyse (toujours visible pendant le pipeline)
+    const analysisProgress = el("div", { class: "analysis-progress hidden", id: "analysis-progress" }, [
+      el("div", { class: "analysis-label", id: "analysis-label" }, "Initialisation…"),
+      el("div", { class: "gauge" }, [el("div", { class: "fill", id: "analysis-fill", style: "width: 0%; background: #ff8a3d;" })]),
+    ]);
+
+    // Carte de progression du téléchargement modèle (Nano/WebLLM, première utilisation)
     const progressCard = el("div", { class: "card hidden", id: "progress-card" }, [
       el("h3", {}, "Téléchargement modèle"),
       el("div", { class: "progress-text", id: "progress-text" }, "…"),
@@ -237,6 +247,7 @@
 
     main.appendChild(adLine);
     main.appendChild(phasesEl);
+    main.appendChild(analysisProgress);
     main.appendChild(progressCard);
     main.appendChild(identityCard);
     main.appendChild(pricesCard);
@@ -391,6 +402,15 @@
   let currentCategory = null;
   function startAnalysis(shadow, ad) {
     if (port) try { port.disconnect(); } catch {}
+    // Réinitialise la barre d'analyse à chaque lancement
+    const card = shadow.getElementById("analysis-progress");
+    const label = shadow.getElementById("analysis-label");
+    const fill = shadow.getElementById("analysis-fill");
+    if (card) {
+      card.classList.remove("hidden");
+      label.innerHTML = `<span>Démarrage…</span><span class="pct">0%</span>`;
+      fill.style.width = "0%";
+    }
     port = chrome.runtime.connect({ name: "bike-analyze" });
     port.postMessage({ type: "analyze", ad });
     setPhase(shadow, "identity", "active");
@@ -414,6 +434,16 @@
         card.classList.remove("hidden");
         if (msg.text) txt.textContent = msg.text;
         if (typeof msg.progress === "number") fill.style.width = `${Math.round(msg.progress * 100)}%`;
+        if (msg.progress >= 1) setTimeout(() => card.classList.add("hidden"), 1500);
+      }
+      else if (msg.type === "analysis_progress") {
+        const card = shadow.getElementById("analysis-progress");
+        const label = shadow.getElementById("analysis-label");
+        const fill = shadow.getElementById("analysis-fill");
+        card.classList.remove("hidden");
+        const pct = Math.round((msg.progress || 0) * 100);
+        label.innerHTML = `<span>${msg.label || "…"}</span><span class="pct">${pct}%</span>`;
+        fill.style.width = `${pct}%`;
         if (msg.progress >= 1) setTimeout(() => card.classList.add("hidden"), 1500);
       }
       else if (msg.type === "phase") {
@@ -458,16 +488,33 @@
 
   // ─── Init ─────────────────────────────────────────────────────────────
 
+  // Une page d'annonce LBC ressemble à /ad/<categorie>/<id> ou /ad/<id>.
+  // On ne s'injecte que là — pas sur l'accueil, pas sur les recherches.
+  function isAdPage() {
+    return /\/ad\//.test(location.pathname);
+  }
+
+  function removeOverlay() {
+    const existing = document.getElementById(SHADOW_HOST_ID);
+    if (existing) existing.remove();
+  }
+
   function init() {
-    if (!window.__lbcBikeExtract) return;
-    const ad = window.__lbcBikeExtract();
+    if (!isAdPage()) return removeOverlay();
+    if (!window.__lbcExtract && !window.__lbcBikeExtract) return;
+    const extractor = window.__lbcExtract || window.__lbcBikeExtract;
+    let ad;
+    try { ad = extractor(); } catch { return; }
     if (!ad) return;
 
-    // Détection vélo : si pas un vélo, on n'injecte rien.
-    if (!ad.is_velo) return;
+    // Si un overlay existe déjà pour cette annonce, ne pas le re-créer
+    const existing = document.getElementById(SHADOW_HOST_ID);
+    if (existing && existing.dataset.adUrl === ad.url) return;
+    if (existing) existing.remove();
 
     const host = document.createElement("div");
     host.id = SHADOW_HOST_ID;
+    host.dataset.adUrl = ad.url;
     document.body.appendChild(host);
     const shadow = host.attachShadow({ mode: "open" });
     const panel = buildPanel(shadow, ad);
@@ -480,10 +527,28 @@
     startAnalysis(shadow, ad);
   }
 
-  // L'extraction peut nécessiter que __NEXT_DATA__ soit présent → petite attente.
+  // Init initial (avec attente pour __NEXT_DATA__).
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => setTimeout(init, 800));
   } else {
     setTimeout(init, 800);
   }
+
+  // ─── Détection navigation SPA (Next.js change l'URL sans reload) ────────
+  let lastUrl = location.href;
+  function onUrlChange() {
+    if (location.href === lastUrl) return;
+    lastUrl = location.href;
+    // Détruit l'overlay courant + relance après que LBC ait re-rendu
+    removeOverlay();
+    setTimeout(init, 1200);
+  }
+  // Patch history API pour intercepter pushState/replaceState
+  for (const m of ["pushState", "replaceState"]) {
+    const orig = history[m];
+    history[m] = function (...args) { const r = orig.apply(this, args); onUrlChange(); return r; };
+  }
+  window.addEventListener("popstate", onUrlChange);
+  // Filet de sécurité : check périodique léger (gère les cas où l'API History n'a pas été utilisée)
+  setInterval(() => { if (location.href !== lastUrl) onUrlChange(); }, 1500);
 })();
