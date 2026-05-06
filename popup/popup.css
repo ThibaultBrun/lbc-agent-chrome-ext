@@ -1,52 +1,30 @@
 * { box-sizing: border-box; }
 body {
+  margin: 0; width: 320px;
+  background: #0f1116; color: #e6e8ee;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  margin: 0;
-  width: 380px;
-  background: #f5f6f8;
-  color: #1a1a1a;
+  font-size: 13px;
 }
 header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  background: #ff6e14;
-  color: #fff;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; background: linear-gradient(135deg, #ff6e14, #ff8a3d); color: #fff;
 }
-header h1 { font-size: 15px; margin: 0; }
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.2);
-}
-main { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
-.card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 10px 12px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  font-size: 13px;
-  line-height: 1.4;
-}
-.card h2 { font-size: 14px; margin: 0 0 4px; }
-.card h3 { font-size: 13px; margin: 0 0 6px; color: #555; }
-.meta { display: flex; gap: 10px; font-size: 12px; color: #666; margin: 0; }
-.actions { display: flex; gap: 8px; }
+.logo { width: 24px; height: 24px; border-radius: 50%; background: #fff; color: #ff6e14; display: grid; place-items: center; font-weight: 700; }
+header h1 { margin: 0; font-size: 14px; flex: 1; }
+main { padding: 12px 14px; }
+#status { margin: 0 0 10px; font-size: 12px; }
+.muted { color: #8a91a0; }
 button {
-  flex: 1;
-  padding: 8px 10px;
-  font-size: 13px;
-  border: 0;
-  border-radius: 6px;
-  background: #1a1a1a;
-  color: #fff;
-  cursor: pointer;
+  display: block; width: 100%; padding: 8px; margin-top: 6px;
+  background: #1f2229; color: #e6e8ee; border: 1px solid #2a2e36; border-radius: 6px;
+  cursor: pointer; font-size: 13px;
 }
-button:disabled { background: #aaa; cursor: not-allowed; }
-button#btn-analyze { background: #ff6e14; }
-button#btn-analyze:disabled { background: #ffb98a; }
+button:hover { background: #2a2e36; }
+button.primary { background: #ff6e14; border-color: #ff6e14; color: #fff; }
+button.primary:hover { background: #ff8a3d; }
 .hidden { display: none; }
-.error { background: #fff0ef; color: #b3261e; border: 1px solid #f5c6c2; }
-#result-text { white-space: pre-wrap; }
+#diag { margin-top: 14px; padding-top: 10px; border-top: 1px solid #2a2e36; }
+#diag h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #ff8a3d; margin: 0 0 6px; }
+#diag ul { list-style: none; padding: 0; margin: 0; font-size: 12px; }
+#diag li { padding: 2px 0; color: #b8bdc8; }
+#diag span { color: #fff; }

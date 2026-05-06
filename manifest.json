@@ -1,36 +1,42 @@
 {
   "manifest_version": 3,
-  "name": "LBC Analyzer",
-  "version": "0.1.0",
-  "description": "Analyse une annonce Leboncoin avec le modèle IA embarqué dans Chrome (Gemini Nano).",
+  "name": "LBC Bike Analyzer",
+  "version": "0.2.0",
+  "description": "Analyse une annonce vélo Leboncoin via IA locale (Gemini Nano / Ollama) + comparables Troc Vélo & Leboncoin.",
   "minimum_chrome_version": "127",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "offscreen"],
   "host_permissions": [
-    "https://www.leboncoin.fr/*"
+    "https://www.leboncoin.fr/*",
+    "https://www.troc-velo.com/*",
+    "https://r.jina.ai/*",
+    "https://lite.duckduckgo.com/*",
+    "https://html.duckduckgo.com/*",
+    "https://duckduckgo.com/*",
+    "https://www.bing.com/*",
+    "http://localhost:11434/*",
+    "https://*/*"
   ],
   "action": {
-    "default_title": "Analyser cette annonce Leboncoin",
-    "default_popup": "popup/popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_title": "LBC Bike Analyzer",
+    "default_popup": "popup/popup.html"
   },
+  "options_page": "options/options.html",
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.leboncoin.fr/ad/*", "https://www.leboncoin.fr/*/*.htm*"],
-      "js": ["content/extract.js"],
+      "matches": ["https://www.leboncoin.fr/ad/velos/*", "https://www.leboncoin.fr/ad/*"],
+      "js": ["content/extract.js", "content/overlay.js"],
+      "css": ["content/overlay.css"],
       "run_at": "document_idle"
     }
   ],
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  }
+  "web_accessible_resources": [
+    {
+      "resources": ["content/overlay.css"],
+      "matches": ["https://www.leboncoin.fr/*"]
+    }
+  ]
 }

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>LBC Bike Analyzer — Options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>LBC Bike Analyzer</h1>
+        <p>Configuration de l'analyse vélo</p>
+      </header>
+
+      <section>
+        <h2>Backend LLM</h2>
+        <div class="field">
+          <label>Mode</label>
+          <select id="llmMode">
+            <option value="auto">Auto (Ollama si dispo, sinon Gemini Nano)</option>
+            <option value="ollama">Ollama uniquement</option>
+            <option value="nano">Gemini Nano uniquement</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>URL Ollama</label>
+          <input type="text" id="ollamaUrl" placeholder="http://localhost:11434" />
+        </div>
+        <div class="field">
+          <label>Modèle d'extraction</label>
+          <input type="text" id="ollamaExtractModel" placeholder="llama3.2:3b" />
+        </div>
+        <div class="field">
+          <label>Modèle de synthèse</label>
+          <input type="text" id="ollamaSynthModel" placeholder="mistral:7b" />
+        </div>
+        <button id="btn-probe" class="secondary">Tester les backends</button>
+        <pre id="probe-output"></pre>
+      </section>
+
+      <section>
+        <h2>Pipeline</h2>
+        <div class="field">
+          <label><input type="checkbox" id="fetchPages" /> Recherche web (catalogues + revendeurs)</label>
+        </div>
+        <div class="field">
+          <label><input type="checkbox" id="enableLbcComparables" /> Comparables Leboncoin</label>
+        </div>
+        <div class="field">
+          <label><input type="checkbox" id="enableTrocVeloComparables" /> Comparables Troc Vélo</label>
+        </div>
+        <div class="field">
+          <label>Résultats web max par requête</label>
+          <input type="number" id="maxWebResults" min="2" max="12" />
+        </div>
+      </section>
+
+      <section>
+        <h2>Cache</h2>
+        <p class="muted">Le cache HTTP local (TTL 7j) accélère les ré-analyses.</p>
+        <button id="btn-clear-cache" class="danger">Vider le cache</button>
+        <span id="cache-status"></span>
+      </section>
+
+      <section>
+        <h2>Pré-requis Gemini Nano</h2>
+        <ol class="muted">
+          <li>Chrome 127+ : <code>chrome://flags/#prompt-api-for-gemini-nano</code> → <strong>Enabled</strong></li>
+          <li><code>chrome://flags/#optimization-guide-on-device-model</code> → <strong>Enabled BypassPerfRequirement</strong></li>
+          <li>Redémarrer Chrome, ouvrir <code>chrome://components</code>, déclencher la mise à jour de <em>Optimization Guide On Device Model</em></li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Pré-requis Ollama (recommandé pour la qualité)</h2>
+        <ol class="muted">
+          <li>Installer Ollama : <code>winget install Ollama.Ollama</code> ou <a href="https://ollama.com" target="_blank">ollama.com</a></li>
+          <li><code>ollama pull llama3.2:3b</code> (extraction)</li>
+          <li><code>ollama pull mistral:7b</code> (synthèse)</li>
+        </ol>
+      </section>
+
+      <footer>
+        <button id="btn-save" class="primary">Enregistrer</button>
+        <span id="save-status"></span>
+      </footer>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

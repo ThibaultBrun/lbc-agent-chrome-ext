@@ -2,37 +2,29 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <title>LBC Analyzer</title>
+    <title>LBC Bike Analyzer</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header>
-      <h1>LBC Analyzer</h1>
-      <span id="model-status" class="badge">Modèle: …</span>
+      <div class="logo">B</div>
+      <h1>LBC Bike Analyzer</h1>
     </header>
-
     <main>
-      <section id="ad-info" class="card hidden">
-        <h2 id="ad-title">—</h2>
-        <p class="meta">
-          <span id="ad-price"></span>
-          <span id="ad-location"></span>
-        </p>
-      </section>
-
-      <section class="actions">
-        <button id="btn-extract">Extraire l'annonce</button>
-        <button id="btn-analyze" disabled>Analyser avec l'IA</button>
-      </section>
-
-      <section id="result" class="card hidden">
-        <h3>Analyse</h3>
-        <div id="result-text"></div>
-      </section>
-
-      <section id="error" class="card error hidden"></section>
+      <p id="status" class="muted">Détection en cours…</p>
+      <div id="actions" class="hidden">
+        <button id="btn-analyze" class="primary">Analyser cette annonce</button>
+        <button id="btn-options">Options</button>
+      </div>
+      <div id="diag">
+        <h3>Diagnostic</h3>
+        <ul>
+          <li>Backend : <span id="diag-backend">…</span></li>
+          <li>Ollama : <span id="diag-ollama">…</span></li>
+          <li>Modèles : <span id="diag-models">—</span></li>
+        </ul>
+      </div>
     </main>
-
     <script type="module" src="popup.js"></script>
   </body>
 </html>
