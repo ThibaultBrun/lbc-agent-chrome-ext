@@ -99,42 +99,64 @@ async function webllmChat({ requestId, model, system, prompt, schema, stream }) 
 
 let nanoSession = null;
 
-async function getNanoSession(systemPrompt) {
+// Émet un event progress homogène (text + progress 0..1) pour tous les paths Nano.
+function emitNanoProgress(requestId, e) {
+  // L'event LanguageModel `downloadprogress` expose .loaded (0..1), parfois aussi .total.
+  const loaded = typeof e?.loaded === "number" ? e.loaded : 0;
+  const pct = (loaded * 100).toFixed(1);
+  chrome.runtime.sendMessage({
+    type: "nano:progress",
+    requestId,
+    loaded,
+    progress: loaded,
+    text: `Téléchargement Gemini Nano · ${pct}%`,
+  });
+}
+
+// Crée une session Nano avec progress propagé via le requestId courant.
+async function createNanoSession({ system, requestId }) {
   if (!("LanguageModel" in self)) throw new Error("LanguageModel API non disponible. Activez chrome://flags/#prompt-api-for-gemini-nano.");
   const availability = await self.LanguageModel.availability();
   if (availability === "unavailable") throw new Error("Gemini Nano non disponible sur cet appareil");
-  if (nanoSession) return nanoSession;
-  nanoSession = await self.LanguageModel.create({
-    initialPrompts: [{ role: "system", content: systemPrompt || "Tu es un assistant utile." }],
+  // Si on est en cours de DL, on prévient l'utilisateur dès le départ
+  if (availability === "downloading" || availability === "downloadable") {
+    chrome.runtime.sendMessage({
+      type: "nano:progress",
+      requestId,
+      progress: 0,
+      text: "Téléchargement Gemini Nano · démarrage…",
+    });
+  }
+  return self.LanguageModel.create({
+    initialPrompts: [{ role: "system", content: system || "Tu es un assistant utile." }],
     monitor(m) {
-      m.addEventListener("downloadprogress", (e) => {
-        chrome.runtime.sendMessage({ type: "nano:progress", loaded: e.loaded });
-      });
+      m.addEventListener("downloadprogress", (e) => emitNanoProgress(requestId, e));
     },
   });
-  return nanoSession;
 }
 
 async function nanoChat({ requestId, prompt, system, schema, stream }) {
   if (schema) {
-    const session = await self.LanguageModel.create({
-      initialPrompts: [{ role: "system", content: system || "Tu es un extracteur. Tu reponds en JSON strict." }],
-    });
-    const text = await session.prompt(prompt, { responseConstraint: schema });
-    session.destroy?.();
-    return text;
+    // Path JSON strict : on crée une session dédiée avec progress câblé dessus aussi.
+    const session = await createNanoSession({ system: system || "Tu es un extracteur. Tu reponds en JSON strict.", requestId });
+    try {
+      return await session.prompt(prompt, { responseConstraint: schema });
+    } finally {
+      session.destroy?.();
+    }
   }
-  const session = await getNanoSession(system);
+  // Path texte / streaming : session partagée pour réutiliser le download.
+  if (!nanoSession) nanoSession = await createNanoSession({ system, requestId });
   if (stream) {
     let full = "";
-    const s = session.promptStreaming(prompt);
+    const s = nanoSession.promptStreaming(prompt);
     for await (const chunk of s) {
       full += chunk;
       chrome.runtime.sendMessage({ type: "nano:chunk", requestId, delta: chunk });
     }
     return full;
   }
-  return session.prompt(prompt);
+  return nanoSession.prompt(prompt);
 }
 
 // ─── Routeur ────────────────────────────────────────────────────────────
