@@ -4,6 +4,21 @@ Extension Chrome (Manifest V3) qui analyse une annonce **Leboncoin** avec une IA
 Architecture **par catégorie** : chaque type d'annonce a son propre module avec ses prompts,
 ses schémas et ses sources de comparaison.
 
+## Agent IA 100% local
+
+Contrairement aux extensions qui appellent OpenAI / Anthropic / Mistral à chaque requête,
+**LBC Analyzer fait tourner l'IA sur ta machine** :
+
+- **Aucune donnée ne quitte ton poste** — pas de transit Atlantique vers les datacenters US, pas de tracking utilisateur, pas de profil construit côté provider. Le contenu de l'annonce, ton historique de recherche, tes hésitations restent chez toi.
+- **Zéro coût d'API** — pas de clé OpenAI à gérer, pas de quota qui s'épuise, pas de facture surprise après une session intensive.
+- **Beaucoup moins énergivore que les LLM cloud** : un Llama 3.2 3B (Ollama / WebLLM / Gemini Nano) tourne sur ton CPU/GPU local. Comparé à un appel GPT-4 qui mobilise un cluster H100 distant pour ~10 s, l'empreinte énergétique est **divisée par 50 à 100**. Pour une analyse complète d'annonce on parle de quelques wattheures côté client vs centaines côté cloud.
+- **Hors-ligne friendly** — une fois Ollama lancé ou WebLLM téléchargé, l'extension marche sans connexion (sauf pour la recherche web et le scraping LBC évidemment).
+- **Pas de vendor lock-in** — tu peux changer de modèle à chaud (Llama, Mistral, Qwen, Phi…), tester ton propre fine-tune, ou désactiver l'IA et garder juste le scraping de comparables.
+
+L'agent est **autonome** : il décide seul des requêtes web à lancer, des sources à fetcher, des comparables à retenir. Tu valides juste l'annonce ouverte — il fait le reste en 30-60 s.
+
+
+
 ## Catégories
 
 | Catégorie | Pipeline | Statut |
