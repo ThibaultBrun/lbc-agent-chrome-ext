@@ -123,5 +123,18 @@
       catch (e) { sendResponse({ ok: false, error: String(e?.message || e) }); }
       return true;
     }
+    // Relay fetch : le content script tourne sur leboncoin.fr donc ses cookies
+    // (Datadome inclus) sont automatiquement transmis. Permet au background
+    // de scraper LBC sans 403.
+    if (msg?.type === "LBC_FETCH") {
+      fetch(msg.url, { credentials: "include" })
+        .then(async (r) => {
+          if (!r.ok) { sendResponse({ ok: false, error: `HTTP ${r.status}` }); return; }
+          const text = await r.text();
+          sendResponse({ ok: true, text });
+        })
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+      return true; // async
+    }
   });
 })();

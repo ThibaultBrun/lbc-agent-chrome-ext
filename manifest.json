@@ -4,7 +4,7 @@
   "version": "0.4.0",
   "description": "Analyse une annonce Leboncoin via IA locale (Ollama / WebLLM / Gemini Nano). Catégorie vélo : pipeline complet (catalogue web + comparables Troc Vélo & Leboncoin). Autres catégories : analyse libre.",
   "minimum_chrome_version": "127",
-  "permissions": ["activeTab", "scripting", "storage", "offscreen"],
+  "permissions": ["activeTab", "scripting", "storage", "offscreen", "tabs"],
   "host_permissions": [
     "https://www.leboncoin.fr/*",
     "https://www.troc-velo.com/*",
