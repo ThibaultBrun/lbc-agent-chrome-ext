@@ -151,6 +151,10 @@
     .comparable-list .src-tag { font-size: 9px; padding: 0 4px; border-radius: 3px; margin-right: 4px; }
     .comparable-list .src-tag.lbc { background: #ff6e14; color: #fff; }
     .comparable-list .src-tag.trocvelo { background: #2a86d8; color: #fff; }
+    .specs-body { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; font-size: 12px; padding-top: 6px; }
+    .spec-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed #2a2e36; }
+    .spec-label { color: #8a91a0; }
+    .spec-value { color: #e6e8ee; font-weight: 500; text-align: right; }
   `;
 
   const PHASES_DEF = [
@@ -261,6 +265,11 @@
       ]),
     ]);
 
+    const specsCard = el("details", { id: "specs-card", class: "card hidden" }, [
+      el("summary", {}, [el("span", { id: "specs-summary" }, "Caractéristiques techniques")]),
+      el("div", { class: "specs-body", id: "specs-body" }),
+    ]);
+
     const compaCard = el("details", { id: "comparables-card", class: "card hidden" }, [
       el("summary", {}, [el("span", { id: "comparables-summary" }, "Comparables")]),
       el("div", { class: "comparable-list", id: "comparables-list" }),
@@ -284,6 +293,7 @@
     main.appendChild(pricesCard);
     main.appendChild(scoresCard);
     main.appendChild(synthCard);
+    main.appendChild(specsCard);
     main.appendChild(compaCard);
     main.appendChild(actions);
     main.appendChild(logCard);
@@ -398,6 +408,77 @@
     for (const c of (synth.cons || [])) consList.appendChild(el("li", {}, c));
     shadow.getElementById("reasoning").textContent = synth.reasoning || "";
     shadow.getElementById("synth-card").classList.remove("hidden");
+  }
+
+  // Rendu de la carte caractéristiques techniques (specs vélo)
+  function renderSpecs(shadow, specs) {
+    const card = shadow.getElementById("specs-card");
+    const body = shadow.getElementById("specs-body");
+    const summary = shadow.getElementById("specs-summary");
+    if (!card || !body) return;
+    if (!specs) { card.classList.add("hidden"); return; }
+    body.innerHTML = "";
+
+    function fmt(label, value, unit = "") {
+      if (value == null || value === "") return null;
+      return el("div", { class: "spec-row" }, [
+        el("span", { class: "spec-label" }, label),
+        el("span", { class: "spec-value" }, `${value}${unit}`),
+      ]);
+    }
+
+    const rows = [];
+    // Cinematique
+    if (specs.travel_front_mm || specs.travel_rear_mm) {
+      const av = specs.travel_front_mm ? `${specs.travel_front_mm} mm` : "—";
+      const ar = specs.travel_rear_mm ? `${specs.travel_rear_mm} mm` : "—";
+      rows.push(fmt("Débattement", `${av} / ${ar}`, " (av/ar)"));
+    }
+    rows.push(fmt("Poids", specs.weight_kg, " kg"));
+    // Geometrie
+    if (specs.geometry) {
+      const g = specs.geometry;
+      rows.push(fmt("Reach", g.reach_mm, " mm"));
+      rows.push(fmt("Stack", g.stack_mm, " mm"));
+      rows.push(fmt("Angle direction", g.head_angle_deg, "°"));
+      rows.push(fmt("Angle selle", g.seat_angle_deg, "°"));
+      rows.push(fmt("Bases", g.chainstay_mm, " mm"));
+      rows.push(fmt("Empattement", g.wheelbase_mm, " mm"));
+      rows.push(fmt("BB drop", g.bb_drop_mm, " mm"));
+      rows.push(fmt("Top tube", g.toptube_mm, " mm"));
+    }
+    // Suspension
+    rows.push(fmt("Fourche", specs.fork));
+    rows.push(fmt("Amortisseur", specs.rear_shock));
+    // Transmission
+    rows.push(fmt("Transmission", specs.drivetrain));
+    if (specs.chainring_count) rows.push(fmt("Plateau(x)", specs.chainring_count));
+    rows.push(fmt("Cassette", specs.cassette));
+    // Freins
+    rows.push(fmt("Freins", specs.brakes));
+    if (specs.rotor_size_front || specs.rotor_size_rear) {
+      const rf = specs.rotor_size_front || "—";
+      const rr = specs.rotor_size_rear || "—";
+      rows.push(fmt("Disques", `${rf} / ${rr}`, " (av/ar)"));
+    }
+    // Roues / pneus
+    rows.push(fmt("Roues", specs.wheelset));
+    rows.push(fmt("Pneu avant", specs.tires_front));
+    rows.push(fmt("Pneu arrière", specs.tires_rear));
+    // Cockpit
+    rows.push(fmt("Tige télescopique", specs.dropper_post));
+    rows.push(fmt("Cintre", specs.handlebar_width_mm, " mm"));
+    // VAE
+    rows.push(fmt("Moteur", specs.motor));
+    rows.push(fmt("Couple moteur", specs.motor_torque_nm, " Nm"));
+    rows.push(fmt("Batterie", specs.battery_wh, " Wh"));
+    rows.push(fmt("Autonomie eco", specs.range_km_eco, " km"));
+
+    const filled = rows.filter(Boolean);
+    if (!filled.length) { card.classList.add("hidden"); return; }
+    for (const r of filled) body.appendChild(r);
+    if (summary) summary.textContent = `Caractéristiques techniques (${filled.length})`;
+    card.classList.remove("hidden");
   }
 
   function renderComparables(shadow, comparables) {
@@ -539,6 +620,7 @@
           case "web_done":
             setPhase(shadow, "web", "done");
             setPhase(shadow, "comparables", "active");
+            if (msg.specs) renderSpecs(shadow, msg.specs); // affiche les specs des l'analyse web finie
             break;
           case "comparables_done":
             setPhase(shadow, "comparables", "done");
@@ -555,6 +637,7 @@
               renderPrices(shadow, ad, r);
               renderScores(shadow, r);
               renderSynth(shadow, r);
+              if (r.specs) renderSpecs(shadow, r.specs);
             }
             break;
         }
