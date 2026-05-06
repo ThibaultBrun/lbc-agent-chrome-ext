@@ -1,5 +1,8 @@
 // Options page — load/save settings, probe backends, clear cache.
-import { WEBLLM_MODELS } from "../lib/core/config.js";
+// On lit/écrit directement chrome.storage.local pour éviter les soucis
+// de sleep du service worker (le bg peut renvoyer null sur get_settings
+// si la promesse est rejetée par un timeout interne du channel).
+import { WEBLLM_MODELS, DEFAULT_SETTINGS } from "../lib/core/config.js";
 
 const FIELDS = [
   "llmMode", "ollamaUrl", "ollamaExtractModel", "ollamaSynthModel", "webllmModel",
@@ -31,18 +34,22 @@ function fillWebllmModels() {
 }
 
 function load() {
-  chrome.runtime.sendMessage({ type: "get_settings" }, (s) => {
+  chrome.storage.local.get(["settings"], (items) => {
+    const s = { ...DEFAULT_SETTINGS, ...(items?.settings || {}) };
     for (const f of FIELDS) setVal(f, s[f]);
   });
 }
 
 function save() {
-  const patch = {};
-  for (const f of FIELDS) patch[f] = getVal(f);
-  chrome.runtime.sendMessage({ type: "save_settings", patch }, () => {
-    const status = document.getElementById("save-status");
-    status.textContent = "✓ Enregistré";
-    setTimeout(() => (status.textContent = ""), 2000);
+  chrome.storage.local.get(["settings"], (items) => {
+    const current = { ...DEFAULT_SETTINGS, ...(items?.settings || {}) };
+    const next = { ...current };
+    for (const f of FIELDS) next[f] = getVal(f);
+    chrome.storage.local.set({ settings: next }, () => {
+      const status = document.getElementById("save-status");
+      status.textContent = "✓ Enregistré";
+      setTimeout(() => (status.textContent = ""), 2000);
+    });
   });
 }
 

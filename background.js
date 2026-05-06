@@ -80,17 +80,24 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
+// Liste blanche des types que le BG traite (les autres types — internes
+// nano:*/webllm:* — sont ignores par ce listener).
+const HANDLED_TYPES = new Set([
+  "get_settings", "save_settings", "probe_backends", "cache_clear", "open_options",
+]);
+
 // Messages one-shot (settings, probe, cache)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg?.type === "get_settings") {
+  if (!msg?.type || !HANDLED_TYPES.has(msg.type)) return false; // ignore silencieusement
+  if (msg.type === "get_settings") {
     getSettings().then(sendResponse);
     return true;
   }
-  if (msg?.type === "save_settings") {
+  if (msg.type === "save_settings") {
     saveSettings(msg.patch).then(sendResponse);
     return true;
   }
-  if (msg?.type === "probe_backends") {
+  if (msg.type === "probe_backends") {
     (async () => {
       const settings = await getSettings();
       const ollama = await probeOllama(settings.ollamaUrl);
@@ -117,11 +124,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true;
   }
-  if (msg?.type === "cache_clear") {
+  if (msg.type === "cache_clear") {
     cacheClear().then(() => sendResponse({ ok: true }));
     return true;
   }
-  if (msg?.type === "open_options") {
+  if (msg.type === "open_options") {
     chrome.runtime.openOptionsPage();
     sendResponse({ ok: true });
     return true;

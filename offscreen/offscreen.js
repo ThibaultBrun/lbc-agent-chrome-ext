@@ -129,6 +129,8 @@ async function createNanoSession({ system, requestId }) {
   }
   return self.LanguageModel.create({
     initialPrompts: [{ role: "system", content: system || "Tu es un assistant utile." }],
+    expectedInputs: [{ type: "text", languages: ["fr", "en"] }],
+    expectedOutputs: [{ type: "text", languages: ["fr"] }],
     monitor(m) {
       m.addEventListener("downloadprogress", (e) => emitNanoProgress(requestId, e));
     },
@@ -161,9 +163,17 @@ async function nanoChat({ requestId, prompt, system, schema, stream }) {
 
 // ─── Routeur ────────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener(async (msg) => {
-  if (!msg || typeof msg !== "object") return;
+const OFFSCREEN_HANDLED = new Set(["webllm:probe", "webllm:request", "nano:probe", "nano:request"]);
 
+chrome.runtime.onMessage.addListener((msg) => {
+  if (!msg?.type || !OFFSCREEN_HANDLED.has(msg.type)) return false;
+  // On ne retourne pas la promise — Chrome ne doit pas attendre de réponse
+  // (les résultats sont envoyés via runtime.sendMessage avec requestId).
+  handleMessage(msg);
+  return false;
+});
+
+async function handleMessage(msg) {
   if (msg.type === "webllm:probe") {
     const result = await probeWebllm();
     chrome.runtime.sendMessage({ type: "webllm:probe_done", requestId: msg.requestId, result });
@@ -202,4 +212,4 @@ chrome.runtime.onMessage.addListener(async (msg) => {
     }
     return;
   }
-});
+}
