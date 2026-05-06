@@ -1,36 +1,42 @@
-# LBC Bike Analyzer
+# LBC Analyzer
 
-Extension Chrome (Manifest V3) qui analyse une annonce **vélo** Leboncoin avec un
-pipeline multi-étapes inspiré de [bike-ia-agent](https://github.com/ThibaultBrun/bike-ia-agent) :
+Extension Chrome (Manifest V3) qui analyse une annonce **Leboncoin** avec une IA locale.
+Architecture **par catégorie** : chaque type d'annonce a son propre module avec ses prompts,
+ses schémas et ses sources de comparaison.
 
-1. **Identité** — extraction structurée (marque, modèle, version, année, taille de roues, taille de cadre, électrique) via LLM
-2. **Catalogue web** — recherche DuckDuckGo / Bing / Jina Reader → ranking LLM → extraction prix par revendeur (Alltricks, Bike-Discount, Probikeshop, sites constructeurs…)
-3. **Comparables occasion** — recherches en parallèle sur **Troc Vélo** et **Leboncoin** (cookies utilisateur, donc pas de Datadome à contourner)
-4. **Synthèse** — `msrp_eur` / `retail_eur` / `estimated_market_eur` / `condition_score` / `deal_score` avec règles de décote (VTT enduro/AM/DH/dirt/junior, pénalités 26" adulte / axe 9mm / cassette 9V…) — schéma identique à `bike-ia-agent`
+## Catégories
 
-L'analyse s'affiche dans un **overlay flottant** injecté en bas à droite de l'annonce, en streaming, avec phases visibles.
+| Catégorie | Pipeline | Statut |
+|---|---|---|
+| **Vélo** | identité (marque/modèle/version/taille de roues/cadre/VAE) → catalogue web (constructeurs + Alltricks/Bike-Discount/Probikeshop) → comparables Troc Vélo + Leboncoin → synthèse `msrp_eur` / `retail_eur` / `estimated_market_eur` / `deal_score` (port fidèle de [bike-ia-agent](https://github.com/ThibaultBrun/bike-ia-agent)) | ✅ V1 |
+| **Voiture, multimédia, immo, …** | À venir | 🚧 |
+| **Default** (fallback) | Résumé + points d'attention + questions à poser au vendeur | ✅ V1 |
+
+L'analyse s'affiche dans un **overlay flottant** Shadow DOM en bas à droite de l'annonce, avec :
+- les phases du pipeline en streaming (Identité → Catalogue → Comparables → Synthèse)
+- la catégorie détectée (badge dans l'en-tête)
+- le backend utilisé (badge Ollama / WebLLM / Gemini Nano)
 
 ## Backends LLM
 
-Trois backends supportés, sélectionnés en cascade en mode `auto` :
+Trois backends, sélectionnés en cascade en mode `auto` :
 
 1. **Ollama** local (recommandé, qualité maximale) — détecté via `http://localhost:11434/api/tags`
-2. **WebLLM** (zéro install, WebGPU) — Llama 3.1 8B / Mistral 7B / Qwen 2.5 / Phi 3.5 dans le navigateur via [@mlc-ai/web-llm](https://github.com/mlc-ai/web-llm). La première utilisation télécharge le modèle (2-5 Go), stocké localement par Chrome.
-3. **Gemini Nano** intégré à Chrome 127+ — fallback minimal, qualité limitée (Gemini Nano 3-4B)
+2. **WebLLM** (zéro install, WebGPU) — Llama 3.1 8B / Mistral 7B / Qwen 2.5 / Phi 3.5 dans le navigateur via [@mlc-ai/web-llm](https://github.com/mlc-ai/web-llm). 1ʳᵉ utilisation = téléchargement modèle (2-5 Go), stocké localement par Chrome.
+3. **Gemini Nano** intégré à Chrome 127+ — fallback minimal, qualité limitée (~3-4B).
 
-> ⚠️ Une extension Chrome ne peut pas installer Ollama. Pour la qualité max : `winget install Ollama.Ollama` puis `ollama pull llama3.2:3b mistral:7b`. Sans Ollama, **WebLLM est le défaut recommandé** — un seul téléchargement initial, ensuite tout est local.
+> Une extension Chrome ne peut pas installer Ollama. Pour la qualité max : `winget install Ollama.Ollama` puis `ollama pull llama3.2:3b mistral:7b`. Sans Ollama, **WebLLM est le défaut zéro-install recommandé**.
 
 ## Installation
 
-1. Cloner le dépôt :
-   ```powershell
-   git clone https://github.com/ThibaultBrun/lbc-agent-chrome-ext.git
-   cd lbc-agent-chrome-ext
-   ```
-2. `chrome://extensions` → Mode développeur → **Charger l'extension non empaquetée** → sélectionner ce dossier
-3. Ouvrir une annonce vélo sur leboncoin.fr → l'overlay apparaît automatiquement en bas à droite
+```powershell
+git clone https://github.com/ThibaultBrun/lbc-agent-chrome-ext.git
+cd lbc-agent-chrome-ext
+```
 
-Le bundle WebLLM est commité dans `dist/`, donc **aucun build n'est requis** pour utiliser l'extension.
+Puis dans Chrome : `chrome://extensions` → Mode développeur → **Charger l'extension non empaquetée** → sélectionner ce dossier.
+
+Le bundle WebLLM est commité dans `dist/` : **aucun build n'est requis** pour utiliser l'extension.
 
 ### Build local (uniquement pour développer)
 
@@ -40,7 +46,7 @@ npm run build      # bundle dist/webllm.bundle.js (~6 Mo)
 npm run watch      # rebuild auto en dev
 ```
 
-### Activer Gemini Nano (si pas d'Ollama)
+### Activer Gemini Nano (si ni Ollama ni WebLLM)
 
 1. `chrome://flags/#prompt-api-for-gemini-nano` → **Enabled**
 2. `chrome://flags/#optimization-guide-on-device-model` → **Enabled BypassPerfRequirement**
@@ -50,63 +56,91 @@ npm run watch      # rebuild auto en dev
 ## Architecture
 
 ```
-manifest.json              # MV3 : host_permissions large, offscreen pour Nano, content scripts
-background.js              # Service worker : routeur de messages, orchestre le pipeline
-offscreen/                 # Document offscreen pour appeler LanguageModel (Nano)
+manifest.json              # MV3
+background.js              # Service worker : router de messages, lance le pipeline
+offscreen/                 # Document offscreen : héberge WebLLM (WebGPU) + Gemini Nano
 content/
-  extract.js               # Extraction de l'annonce LBC (JSON-LD + __NEXT_DATA__)
-  overlay.js + overlay.css # Panneau Shadow DOM avec UI streaming
+  extract.js               # Content script : extraction LBC (JSON-LD + __NEXT_DATA__)
+  overlay.js               # Content script : panneau Shadow DOM (streaming + UI)
+dist/
+  webllm.bundle.js         # @mlc-ai/web-llm bundlé (~6 Mo)
+
 lib/
-  config.js                # Constantes : retailers, manufacturers, throttle, schemas, etc.
-  utils.js                 # http_get, throttle par domaine, cache disque (chrome.storage)
-  llm.js                   # Adaptateur Ollama + détection backend
-  identity.js              # Extraction identité (port de identity.py)
-  search.js                # Web search DDG/Bing/Jina (port de search.py)
-  pages.js                 # Fetch pages + extraction prix (port de pages.py)
-  ranking.js               # Build queries + ranking LLM (port de ranking.py)
-  comparables.js           # Comparables Troc Vélo + Leboncoin
-  synth.js                 # DECOTE_RULES_BIKE + SYNTHESIS_SCHEMA (port de synth.py)
-  pipeline.js              # Orchestrateur enrich_ad
-options/                   # Page Options (mode LLM, cache, diagnostics)
+  core/                    # 100% générique — jamais touché par catégorie
+    config.js              # USER_AGENTS, throttle, cache, settings, regex prix
+    utils.js               # httpGet, throttle, cache, normalizeSpace, median
+    llm.js                 # Probe + adapter Ollama / WebLLM / Nano + selectBackend
+    llm-router.js          # Classe LlmRouter (json/text uniformes)
+    search.js              # Web search DDG → Bing → Jina (excludedDomains paramétrable)
+    pages.js               # Fetch page (Jina Reader + fallback) + regex prix générique
+    extract-base.js        # Champs neutres LBC (titre/body/prix/lieu/attrs)
+    synth-base.js          # ratioToScore, combineDealScores, summarizePrices
+    pipeline.js            # Orchestrateur générique : delegate à categories[].enrichAd()
+
+  categories/
+    index.js               # Registry + resolveCategory(ad)
+
+    velo/
+      catalog.js           # MANUFACTURER_DOMAINS, KNOWN_RETAILERS, ELECTRIC_KEYWORDS, etc.
+      detect.js            # detect(ad) → boolean (URL /ad/velos/, mots-clés titre…)
+      identity.js          # IDENTITY_SCHEMA + buildIdentityPrompt + postProcessIdentity
+      ranking.js           # buildSearchQueries + buildRankPrompt + RANK_SCHEMA
+      pages.js             # buildPriceExtractionPrompt (hint constructeur/revendeur/junior)
+      comparables.js       # fetchAllComparables = Troc Vélo + LBC en parallèle
+      synth.js             # DECOTE_RULES_BIKE + SYNTHESIS_SCHEMA + buildSynthesisPrompt + decoteFactor
+      extract.js           # Extension de extract-base avec is_velo
+      ui.js                # Renderers spécialisés (3 prix, badges, comparables)
+      index.js             # Module catégorie : { id, label, detect, enrichAd, uiRendererPath }
+
+    default/
+      index.js             # Fallback : summary + pros/cons + questions à poser
+
+options/                   # Page Options
 popup/                     # Popup de diagnostic
 ```
 
-## Pipeline détaillé
+## Ajouter une catégorie
+
+1. Créer `lib/categories/<id>/`
+2. Implémenter au minimum `index.js` avec :
+   ```js
+   export default {
+     id: "voiture",
+     label: "Voiture",
+     detect: (ad) => /\/ad\/voitures\//.test(ad.url),
+     enrichAd: async ({ ad, llm, settings, emit, log, phase }) => { ... },
+   };
+   ```
+3. L'ajouter dans `lib/categories/index.js` (avant `default`)
+4. Ajouter la détection dans `content/extract.js::detectCategory`
+
+Le pipeline générique appelle `category.enrichAd(...)`. Toute la logique métier
+(prompts, schémas, sources, règles de décote) vit dans le dossier de catégorie.
+
+## Pipeline (catégorie vélo)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Page LBC vélo                                                        │
-│   ├── content/extract.js  →  lit __NEXT_DATA__ + JSON-LD            │
-│   └── content/overlay.js  →  panneau flottant + chrome.runtime.connect│
-└─────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼ port "bike-analyze"
-┌─────────────────────────────────────────────────────────────────────┐
-│ background.js (service worker)                                       │
-│   1. probe Ollama → backend = ollama | nano | none                  │
-│   2. lib/pipeline.js::enrichAd()                                    │
-│      ├─ identity (LLM)        ──▶ phase: identity_done              │
-│      ├─ web search × 3 queries ──▶ phase: web_candidates             │
-│      ├─ rank LLM top-6        ──▶ phase: web_ranked                 │
-│      ├─ fetch pages × 6 + extract prices LLM (msrp/retail/used)     │
-│      │                        ──▶ phase: web_done                   │
-│      ├─ comparables Troc Vélo + LBC (parallèle)                     │
-│      │                        ──▶ phase: comparables_done           │
-│      └─ synth LLM + scores déterministes                            │
-│                               ──▶ phase: done                       │
-└─────────────────────────────────────────────────────────────────────┘
+Page LBC                               Service worker (background.js)
+  └ extract.js                                ┌── pipeline.js
+  └ overlay.js ── port "bike-analyze" ───▶  resolveCategory(ad) → velo
+                                              ├── identity (LLM + post-process)
+                                              ├── web search (DDG/Bing/Jina)
+                                              ├── ranking LLM top-6
+                                              ├── fetch pages × 6 + price extraction LLM
+                                              ├── comparables Troc Vélo + LBC en parallèle
+                                              └── synth LLM + scores déterministes (vs new + vs used)
 ```
 
-Pour les appels Gemini Nano (qui ne marchent pas dans le service worker MV3), un
-**document offscreen** héberge l'API `LanguageModel`. Le background route les
-prompts via `chrome.runtime.sendMessage`.
+Les appels Gemini Nano et WebLLM ne marchent pas dans un service worker MV3 ;
+un **document offscreen** les héberge. Le background route via `chrome.runtime.sendMessage`.
 
-## Sortie
+## Sortie (catégorie vélo)
 
-Format identique à `bike-ia-agent` (drop-in compatible avec le schéma `lbc-sniper`) :
+Format identique à `bike-ia-agent` :
 
 ```json
 {
+  "category": "velo",
   "ad_url": "https://www.leboncoin.fr/...",
   "asking_price_eur": 4500,
   "brand": "Orbea", "model": "Rallon", "year": 2023,
@@ -122,16 +156,18 @@ Format identique à `bike-ia-agent` (drop-in compatible avec le schéma `lbc-sni
 
 ## Options
 
-`chrome://extensions` → LBC Bike Analyzer → Détails → Options de l'extension.
+`chrome://extensions` → LBC Analyzer → Détails → Options de l'extension.
 
-- **Mode LLM** : auto / Ollama / Nano
-- **URL Ollama** + modèles (extraction, synthèse)
+- **Mode LLM** : auto / Ollama / WebLLM / Nano
+- **URL Ollama** + modèles (extraction `llama3.2:3b`, synthèse `mistral:7b` recommandés)
+- Sélection du modèle WebLLM
 - Activer / désactiver la recherche web, les comparables Troc Vélo / LBC
 - Vider le cache HTTP (TTL 7j par défaut)
-- Tester les backends
+- Tester les 3 backends
 
 ## Limites connues
 
-- Le scraping Troc Vélo / LBC dépend du HTML public. Les sélecteurs peuvent changer ; le module `lib/comparables.js` parse en regex tolérante avec fallback sur `__NEXT_DATA__` (LBC).
-- Le pipeline complet prend **30-60 s** la première fois (fetches web), puis 5-10 s avec cache.
-- Gemini Nano (~3-4B) fait moins bien que `mistral:7b` sur la synthèse VTT spécialisée. Le mode Ollama est recommandé.
+- Le scraping Troc Vélo / LBC dépend du HTML public — les sélecteurs peuvent changer.
+- Le pipeline complet (catégorie vélo) prend **30-60 s** la première fois, puis 5-10 s avec cache.
+- Gemini Nano (~3-4B) fait moins bien que `mistral:7b` sur la synthèse spécialisée. **Mode Ollama recommandé** pour la qualité.
+- L'extension a été conçue à partir du workflow Python `bike-ia-agent` ; le portage est fidèle mais non testé exhaustivement en navigateur.

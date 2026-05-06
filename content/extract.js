@@ -1,5 +1,6 @@
-// Content script (1/2) : extraction de l'annonce Leboncoin.
-// Expose window.__lbcBikeExtract() pour overlay.js.
+// Content script (1/2) : extraction de l'annonce Leboncoin (générique + détection catégorie).
+// Expose window.__lbcExtract() pour overlay.js.
+// Pas d'import ESM ici : les content scripts ne supportent pas les modules sans hack.
 
 (function () {
   function textOrNull(sel, root = document) {
@@ -35,7 +36,6 @@
     try { return JSON.parse(el.textContent); } catch { return null; }
   }
 
-  // Cherche récursivement dans __NEXT_DATA__ un objet ressemblant à une annonce LBC
   function findAdInTree(obj, depth = 0) {
     if (!obj || depth > 10) return null;
     if (typeof obj === "object" && !Array.isArray(obj)) {
@@ -61,22 +61,23 @@
     return out;
   }
 
-  function isVeloAd(ad) {
-    if (!ad) return false;
-    const cat = String(ad.category_id || ad.category_name || "").toLowerCase();
-    if (cat.includes("velo") || cat === "24") return true;
-    // Heuristique URL
-    return /\/ad\/velos\//.test(location.href);
+  // ─── Détection catégorie (dupliqué ici car content script ne peut pas importer)
+  // À garder synchrone avec lib/categories/<cat>/detect.js
+  function detectCategory(ad) {
+    const url = ad?.url || location.href;
+    if (/leboncoin\.fr\/ad\/velos\//.test(url)) return "velo";
+    if (/leboncoin\.fr\/ad\/(?:velos_speciaux|equipements_velos)\//.test(url)) return "velo";
+    const cat = String(ad?.category_id || ad?.category_name || "").toLowerCase();
+    if (cat === "24" || cat.includes("velo") || cat.includes("vélo")) return "velo";
+    const title = (ad?.subject || "").toLowerCase();
+    if (/\b(velo|vélo|vtt|vtc|vae|vttae|gravel|bmx|cyclo)\b/.test(title)) return "velo";
+    return "default";
   }
 
   function extractAd() {
     const next = readNextData();
-    let lbc = null;
-    if (next) lbc = findAdInTree(next);
-
-    // Fallback JSON-LD
-    const ldItems = readJsonLd();
-    const product = findProduct(ldItems);
+    const lbc = next ? findAdInTree(next) : null;
+    const product = findProduct(readJsonLd());
 
     const titleFallback = textOrNull("h1") || document.title;
     const priceFallback =
@@ -98,15 +99,22 @@
     const url = lbc?.url || location.href;
     const id = lbc?.list_id || (location.pathname.match(/\/ad\/[^/]+\/(\d+)/) || [])[1];
     const attributes = lbc ? pickAttributes(lbc) : {};
-    const isVelo = isVeloAd(lbc) || /\/ad\/velos\//.test(url) || (subject || "").toLowerCase().match(/\b(velo|vtt|vtc|vae|gravel|bmx|cyclo)\b/);
+    const categoryId = lbc?.category_id;
+    const categoryName = lbc?.category_name;
 
-    return {
+    const ad = {
       id, url, subject, body, price, city, attributes,
-      is_velo: !!isVelo,
+      category_id: categoryId,
+      category_name: categoryName,
       extracted_at: new Date().toISOString(),
     };
+    ad.category_hint = detectCategory(ad);
+    ad.is_velo = ad.category_hint === "velo"; // legacy alias
+    return ad;
   }
 
+  window.__lbcExtract = extractAd;
+  // Alias rétro-compat
   window.__lbcBikeExtract = extractAd;
 
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {

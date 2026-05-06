@@ -1,10 +1,11 @@
 // Service worker — routeur de messages + orchestration du pipeline.
-// Gemini Nano n'est pas exposé dans le service worker MV3 ; on délègue les appels
-// Nano à un offscreen document (chrome.offscreen API).
+// Gemini Nano et WebLLM ne tournent pas dans le service worker MV3 ; on délègue
+// les appels à un offscreen document (chrome.offscreen API).
 
-import { enrichAd, LlmRouter } from "./lib/pipeline.js";
-import { getSettings, saveSettings, probeOllama, probeWebllm, selectBackend } from "./lib/llm.js";
-import { cacheClear } from "./lib/utils.js";
+import { enrichAd } from "./lib/core/pipeline.js";
+import { LlmRouter } from "./lib/core/llm-router.js";
+import { getSettings, saveSettings, probeOllama, probeWebllm, selectBackend } from "./lib/core/llm.js";
+import { cacheClear } from "./lib/core/utils.js";
 
 let creatingOffscreen = null;
 async function ensureOffscreen() {

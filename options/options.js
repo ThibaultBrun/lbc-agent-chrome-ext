@@ -1,5 +1,5 @@
 // Options page — load/save settings, probe backends, clear cache.
-import { WEBLLM_MODELS } from "../lib/config.js";
+import { WEBLLM_MODELS } from "../lib/core/config.js";
 
 const FIELDS = [
   "llmMode", "ollamaUrl", "ollamaExtractModel", "ollamaSynthModel", "webllmModel",

@@ -103,10 +103,19 @@
       animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .backend-badge {
+    .backend-badge, .category-badge {
       display: inline-block; padding: 1px 6px; font-size: 10px; border-radius: 3px;
       background: #2a3344; color: #cfdcff; margin-left: 6px;
     }
+    .category-badge {
+      background: rgba(255,255,255,0.22);
+      color: #fff;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .questions-list { margin: 0; padding-left: 16px; font-size: 12px; color: #cfdcff; }
+    .questions-list li { padding: 2px 0; }
     details { margin-top: 8px; }
     details summary { cursor: pointer; font-size: 11px; color: #8a91a0; }
     .comparable-list { font-size: 11px; max-height: 160px; overflow-y: auto; }
@@ -157,8 +166,12 @@
 
     const panel = el("div", { class: "panel" });
     const header = el("header", {}, [
-      el("div", { class: "logo" }, "B"),
-      el("h1", {}, ["LBC Bike Analyzer", el("span", { class: "backend-badge", id: "backend-badge" }, "…")]),
+      el("div", { class: "logo" }, "L"),
+      el("h1", {}, [
+        "LBC Analyzer",
+        el("span", { class: "category-badge", id: "category-badge" }, ""),
+        el("span", { class: "backend-badge", id: "backend-badge" }, "…"),
+      ]),
       el("button", { id: "btn-toggle", title: "Réduire" }, "—"),
       el("button", { id: "btn-close", title: "Fermer" }, "✕"),
     ]);
@@ -354,9 +367,28 @@
     card.classList.remove("hidden");
   }
 
+  // ─── Rendu pour la catégorie default (résumé + questions) ────────────
+
+  function renderDefault(shadow, ad, r) {
+    // Affiche reasoning (= summary), pros, cons via la carte synth standard
+    renderSynth(shadow, r);
+    // Et ajoute les questions à poser au vendeur
+    const synthCard = shadow.getElementById("synth-card");
+    if (r.questions && r.questions.length) {
+      const existing = synthCard.querySelector(".questions-block");
+      if (existing) existing.remove();
+      const block = el("div", { class: "questions-block", style: "margin-top: 10px;" }, [
+        el("strong", { html: "Questions à poser au vendeur" }),
+        el("ul", { class: "questions-list" }, r.questions.map((q) => el("li", {}, q))),
+      ]);
+      synthCard.appendChild(block);
+    }
+  }
+
   // ─── Lancement du pipeline ───────────────────────────────────────────
 
   let port = null;
+  let currentCategory = null;
   function startAnalysis(shadow, ad) {
     if (port) try { port.disconnect(); } catch {}
     port = chrome.runtime.connect({ name: "bike-analyze" });
@@ -369,6 +401,11 @@
         const b = shadow.getElementById("backend-badge");
         const labels = { ollama: "Ollama", webllm: "WebLLM", nano: "Gemini Nano", none: "—" };
         b.textContent = labels[msg.backend.kind] || "—";
+      }
+      else if (msg.type === "category") {
+        const b = shadow.getElementById("category-badge");
+        b.textContent = msg.label || msg.id;
+        currentCategory = msg.id;
       }
       else if (msg.type === "model_progress") {
         const card = shadow.getElementById("progress-card");
@@ -398,9 +435,14 @@
           case "done":
             setPhase(shadow, "synth", "done");
             const r = msg.result;
-            renderPrices(shadow, ad, r);
-            renderScores(shadow, r);
-            renderSynth(shadow, r);
+            const cat = r.category || currentCategory;
+            if (cat === "default") {
+              renderDefault(shadow, ad, r);
+            } else {
+              renderPrices(shadow, ad, r);
+              renderScores(shadow, r);
+              renderSynth(shadow, r);
+            }
             break;
         }
       }

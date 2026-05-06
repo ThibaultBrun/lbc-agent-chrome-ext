@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "LBC Bike Analyzer",
-  "version": "0.2.0",
-  "description": "Analyse une annonce vélo Leboncoin via IA locale (Gemini Nano / Ollama) + comparables Troc Vélo & Leboncoin.",
+  "name": "LBC Analyzer",
+  "version": "0.4.0",
+  "description": "Analyse une annonce Leboncoin via IA locale (Ollama / WebLLM / Gemini Nano). Catégorie vélo : pipeline complet (catalogue web + comparables Troc Vélo & Leboncoin). Autres catégories : analyse libre.",
   "minimum_chrome_version": "127",
   "permissions": ["activeTab", "scripting", "storage", "offscreen"],
   "host_permissions": [
@@ -17,7 +17,7 @@
     "https://*/*"
   ],
   "action": {
-    "default_title": "LBC Bike Analyzer",
+    "default_title": "LBC Analyzer",
     "default_popup": "popup/popup.html"
   },
   "options_page": "options/options.html",
@@ -27,7 +27,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.leboncoin.fr/ad/velos/*", "https://www.leboncoin.fr/ad/*"],
+      "matches": ["https://www.leboncoin.fr/ad/*"],
       "js": ["content/extract.js", "content/overlay.js"],
       "css": ["content/overlay.css"],
       "run_at": "document_idle"
