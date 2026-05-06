@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(git -c user.name=\"ThibaultBrun\" -c user.email=\"t.brun@geomatika.fr\" commit -m \"Initial commit: extension Chrome d'analyse d'annonces Leboncoin via Gemini Nano embarqué\")"
-    ]
-  }
-}
