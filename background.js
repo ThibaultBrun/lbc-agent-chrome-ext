@@ -121,6 +121,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     cacheClear().then(() => sendResponse({ ok: true }));
     return true;
   }
+  if (msg?.type === "open_options") {
+    chrome.runtime.openOptionsPage();
+    sendResponse({ ok: true });
+    return true;
+  }
 });
 
 chrome.runtime.onInstalled.addListener(() => {

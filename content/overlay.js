@@ -475,7 +475,7 @@
     shadow.getElementById("btn-close").addEventListener("click", () => { host.remove(); });
     shadow.getElementById("btn-toggle").addEventListener("click", () => { panel.classList.toggle("collapsed"); });
     shadow.getElementById("btn-rerun").addEventListener("click", () => startAnalysis(shadow, ad));
-    shadow.getElementById("btn-options").addEventListener("click", () => chrome.runtime.sendMessage({ type: "open_options" }) || chrome.runtime.openOptionsPage?.());
+    shadow.getElementById("btn-options").addEventListener("click", () => chrome.runtime.sendMessage({ type: "open_options" }));
 
     startAnalysis(shadow, ad);
   }
