@@ -578,6 +578,11 @@
     try { ad = extractor(); } catch { return; }
     if (!ad) return;
 
+    // Garde-fou : si l'ID extrait ne correspond pas à l'URL actuelle, on n'injecte pas
+    // (l'ancien __NEXT_DATA__ traîne encore après une nav SPA — initWhenReady gère le retry)
+    const expectedId = (location.pathname.match(/\/ad\/[^/]+\/(\d+)/) || [])[1];
+    if (expectedId && ad.id && String(ad.id) !== expectedId) return;
+
     // Si un overlay existe déjà pour cette annonce, ne pas le re-créer
     const existing = document.getElementById(SHADOW_HOST_ID);
     if (existing && existing.dataset.adUrl === ad.url) return;
@@ -598,11 +603,45 @@
     startAnalysis(shadow, ad);
   }
 
-  // Init initial (avec attente pour __NEXT_DATA__).
+  // Attend que extractAd() retourne une annonce dont l'ID correspond à l'URL
+  // courante. Next.js peut conserver l'ancien __NEXT_DATA__ pendant quelques
+  // centaines de ms après un pushState : on retry jusqu'a ce que l'ID matche.
+  function initWhenReady() {
+    if (!isAdPage()) return removeOverlay();
+    const expectedUrl = location.href;
+    const expectedId = (location.pathname.match(/\/ad\/[^/]+\/(\d+)/) || [])[1];
+    let attempts = 0;
+    const tryInit = () => {
+      attempts++;
+      // L'URL a changé entre-temps : on abandonne ce cycle (un autre prendra le relais)
+      if (location.href !== expectedUrl) return;
+      const extractor = window.__lbcExtract || window.__lbcBikeExtract;
+      if (!extractor) {
+        if (attempts < 50) return setTimeout(tryInit, 200);
+        return;
+      }
+      let ad;
+      try { ad = extractor(); } catch { ad = null; }
+      // L'ID extrait doit matcher celui de l'URL — sinon on est encore sur l'ancienne
+      // annonce (Next.js n'a pas fini de re-render).
+      const adIdMatches = !expectedId || (ad?.id && String(ad.id) === expectedId);
+      // Heuristique titre : si l'h1 affiche encore l'ancien titre, on attend
+      const titleStillStale = !ad?.subject || ad.subject.length < 5;
+      if (ad && adIdMatches && !titleStillStale) {
+        const existing = document.getElementById(SHADOW_HOST_ID);
+        if (existing && existing.dataset.adUrl === ad.url) return;
+        return init();
+      }
+      if (attempts < 50) setTimeout(tryInit, 200); // ~10s max
+    };
+    tryInit();
+  }
+
+  // Init initial (avec attente que __NEXT_DATA__ soit présent et cohérent).
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(init, 800));
+    document.addEventListener("DOMContentLoaded", () => setTimeout(initWhenReady, 200));
   } else {
-    setTimeout(init, 800);
+    setTimeout(initWhenReady, 200);
   }
 
   // ─── Détection navigation SPA (Next.js change l'URL sans reload) ────────
@@ -610,16 +649,15 @@
   function onUrlChange() {
     if (location.href === lastUrl) return;
     lastUrl = location.href;
-    // Détruit l'overlay courant + relance après que LBC ait re-rendu
+    // Détruit l'overlay courant immédiatement + attend que la nouvelle annonce
+    // soit prête dans le DOM avant de re-créer.
     removeOverlay();
-    setTimeout(init, 1200);
+    initWhenReady();
   }
-  // Patch history API pour intercepter pushState/replaceState
   for (const m of ["pushState", "replaceState"]) {
     const orig = history[m];
     history[m] = function (...args) { const r = orig.apply(this, args); onUrlChange(); return r; };
   }
   window.addEventListener("popstate", onUrlChange);
-  // Filet de sécurité : check périodique léger (gère les cas où l'API History n'a pas été utilisée)
   setInterval(() => { if (location.href !== lastUrl) onUrlChange(); }, 1500);
 })();

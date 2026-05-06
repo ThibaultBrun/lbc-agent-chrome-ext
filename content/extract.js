@@ -75,8 +75,16 @@
   }
 
   function extractAd() {
+    // Pour les navs SPA Next.js : __NEXT_DATA__ ne se met pas a jour, donc on
+    // verifie d'abord que l'ID dans __NEXT_DATA__ correspond a l'URL courante.
+    // Sinon on ignore __NEXT_DATA__ et on tombe sur le DOM live (qui lui est a jour).
+    const expectedId = (location.pathname.match(/\/ad\/[^/]+\/(\d+)/) || [])[1];
     const next = readNextData();
-    const lbc = next ? findAdInTree(next) : null;
+    let lbc = next ? findAdInTree(next) : null;
+    if (lbc && expectedId && String(lbc.list_id) !== String(expectedId)) {
+      // __NEXT_DATA__ correspond a une ancienne annonce → on l'ignore
+      lbc = null;
+    }
     const product = findProduct(readJsonLd());
 
     const titleFallback = textOrNull("h1") || document.title;
