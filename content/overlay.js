@@ -49,7 +49,10 @@
       padding: 6px 4px; border-radius: 6px; background: #1f2229; border: 1px solid #2a2e36;
       font-size: 10px; text-align: center; color: #6f7682;
       transition: all 0.2s ease;
+      cursor: pointer;
+      user-select: none;
     }
+    .phase:hover { filter: brightness(1.2); }
     .phase.active { background: #2a3344; border-color: #4a86ff; color: #cfdcff; box-shadow: 0 0 0 2px rgba(74,134,255,0.15); }
     .phase.done { background: #1d2a1f; border-color: #2f6b3a; color: #aaeab8; }
     .phase.error { background: #2d1a1a; border-color: #6b2f2f; color: #ffaaa5; }
@@ -81,7 +84,21 @@
     .progress-text { font-size: 12px; color: #cfdcff; font-family: monospace; }
     .analysis-progress { margin-bottom: 10px; }
     .analysis-label { font-size: 11px; color: #cfdcff; margin-bottom: 4px; display: flex; justify-content: space-between; }
-    .analysis-label .pct { color: #ff8a3d; font-weight: 600; }
+    .analysis-label .pct { color: #ff8a3d; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .analysis-progress .gauge { position: relative; overflow: hidden; }
+    .analysis-progress .gauge .fill {
+      transition: width 200ms linear;
+      position: relative; overflow: hidden;
+    }
+    /* Variante avec saut anime (utilisee aux checkpoints serveur) */
+    .analysis-progress .gauge .fill.checkpoint { transition: width 600ms cubic-bezier(0.4, 0, 0.2, 1); }
+    /* Effet shimmer pour montrer que ca bosse */
+    .analysis-progress .gauge .fill::after {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+      animation: shimmer 1.6s linear infinite;
+    }
+    @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
     .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .pros, .cons { display: flex; flex-direction: column; gap: 4px; }
     .pros li { color: #4dd987; }
@@ -132,10 +149,10 @@
   `;
 
   const PHASES_DEF = [
-    { id: "identity", label: "Identité" },
-    { id: "web", label: "Catalogue" },
-    { id: "comparables", label: "Comparables" },
-    { id: "synth", label: "Synthèse" },
+    { id: "identity", label: "Identité", scrollTo: "identity-card" },
+    { id: "web", label: "Catalogue", scrollTo: "prices-card" },
+    { id: "comparables", label: "Comparables", scrollTo: "comparables-card" },
+    { id: "synth", label: "Synthèse", scrollTo: "synth-card" },
   ];
 
   function fmtPrice(n) {
@@ -187,7 +204,16 @@
     ]);
 
     const phasesEl = el("div", { class: "phases" },
-      PHASES_DEF.map((p) => el("div", { class: "phase", id: `phase-${p.id}` }, p.label)),
+      PHASES_DEF.map((p) => {
+        const node = el("div", { class: "phase", id: `phase-${p.id}`, "data-target": p.scrollTo, title: `Aller à ${p.label}` }, p.label);
+        node.addEventListener("click", () => {
+          const target = shadow.getElementById(p.scrollTo);
+          if (target && !target.classList.contains("hidden")) {
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        });
+        return node;
+      }),
     );
 
     // Barre de progression de l'analyse (toujours visible pendant le pipeline)
@@ -400,17 +426,61 @@
 
   let port = null;
   let currentCategory = null;
+  let progressTimer = null;
+  let displayedProgress = 0;       // % affiché à l'écran (peut creep entre checkpoints)
+  let serverCheckpoint = 0;        // dernier % reçu du backend
+  let progressSpeed = 0.001;       // vitesse de creep (% par tick de 200ms)
+
+  function stopCreep() {
+    if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  }
+
+  function startCreep(shadow) {
+    stopCreep();
+    progressTimer = setInterval(() => {
+      // Cible : milieu entre checkpoint actuel et la fin (1.0). On creep doucement
+      // vers le prochain checkpoint, sans jamais dépasser un cap autour de la cible.
+      const cap = Math.min(0.97, serverCheckpoint + 0.10);
+      if (displayedProgress < cap) {
+        displayedProgress = Math.min(cap, displayedProgress + progressSpeed);
+        const fill = shadow.getElementById("analysis-fill");
+        const labelPct = shadow.getElementById("analysis-label")?.querySelector(".pct");
+        if (fill) fill.style.width = `${(displayedProgress * 100).toFixed(1)}%`;
+        if (labelPct) labelPct.textContent = `${Math.round(displayedProgress * 100)}%`;
+      }
+    }, 200);
+  }
+
+  function setProgress(shadow, target, label) {
+    const card = shadow.getElementById("analysis-progress");
+    const labelEl = shadow.getElementById("analysis-label");
+    const fill = shadow.getElementById("analysis-fill");
+    if (!card) return;
+    card.classList.remove("hidden");
+    serverCheckpoint = target;
+    displayedProgress = target;
+    const pct = Math.round(target * 100);
+    if (labelEl) labelEl.innerHTML = `<span>${label || "…"}</span><span class="pct">${pct}%</span>`;
+    if (fill) {
+      // Saut serveur : transition douce 600ms
+      fill.classList.add("checkpoint");
+      fill.style.width = `${pct}%`;
+      // Apres l'anim, on retire la classe pour que le creep utilise la transition
+      // courte (200ms linear) qui rend l'avancement fluide.
+      setTimeout(() => fill.classList.remove("checkpoint"), 650);
+    }
+    // Adapte la vitesse de creep selon où on est : plus lent vers la fin
+    progressSpeed = target < 0.5 ? 0.003 : target < 0.85 ? 0.0015 : 0.0005;
+  }
+
   function startAnalysis(shadow, ad) {
     if (port) try { port.disconnect(); } catch {}
-    // Réinitialise la barre d'analyse à chaque lancement
-    const card = shadow.getElementById("analysis-progress");
-    const label = shadow.getElementById("analysis-label");
-    const fill = shadow.getElementById("analysis-fill");
-    if (card) {
-      card.classList.remove("hidden");
-      label.innerHTML = `<span>Démarrage…</span><span class="pct">0%</span>`;
-      fill.style.width = "0%";
-    }
+    stopCreep();
+    displayedProgress = 0;
+    serverCheckpoint = 0;
+    progressSpeed = 0.003;
+    setProgress(shadow, 0, "Démarrage…");
+    startCreep(shadow);
     // Cache la progress de DL modèle (sera re-affichée seulement si le backend en envoie)
     const dlCard = shadow.getElementById("progress-card");
     if (dlCard) dlCard.classList.add("hidden");
@@ -440,14 +510,11 @@
         if (msg.progress >= 1) setTimeout(() => card.classList.add("hidden"), 1500);
       }
       else if (msg.type === "analysis_progress") {
-        const card = shadow.getElementById("analysis-progress");
-        const label = shadow.getElementById("analysis-label");
-        const fill = shadow.getElementById("analysis-fill");
-        card.classList.remove("hidden");
-        const pct = Math.round((msg.progress || 0) * 100);
-        label.innerHTML = `<span>${msg.label || "…"}</span><span class="pct">${pct}%</span>`;
-        fill.style.width = `${pct}%`;
-        if (msg.progress >= 1) setTimeout(() => card.classList.add("hidden"), 1500);
+        setProgress(shadow, msg.progress || 0, msg.label || "…");
+        if (msg.progress >= 1) {
+          stopCreep();
+          setTimeout(() => shadow.getElementById("analysis-progress")?.classList.add("hidden"), 1500);
+        }
       }
       else if (msg.type === "phase") {
         switch (msg.phase) {
@@ -481,6 +548,7 @@
       }
       else if (msg.type === "error") {
         appendLog(shadow, `[error] ${msg.error}`);
+        stopCreep();
         for (const p of PHASES_DEF) {
           const e = shadow.getElementById(`phase-${p.id}`);
           if (e && e.classList.contains("active")) e.classList.remove("active"), e.classList.add("error");
