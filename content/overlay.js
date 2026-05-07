@@ -155,6 +155,18 @@
     .spec-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed #2a2e36; }
     .spec-label { color: #8a91a0; }
     .spec-value { color: #e6e8ee; font-weight: 500; text-align: right; }
+    .reliability-body { padding-top: 6px; }
+    .reliability-score { font-size: 22px; font-weight: 700; }
+    .reliability-bad { color: #ff6b6b; }
+    .reliability-mid { color: #ffb84d; }
+    .reliability-good { color: #4dd987; }
+    .issues-list { margin: 0; padding-left: 16px; font-size: 12px; color: #cfdcff; }
+    .issues-list li { padding: 3px 0; }
+    .issue-severity-critique { color: #ff6b6b; font-weight: 600; }
+    .issue-severity-grave { color: #ff8a3d; font-weight: 600; }
+    .issue-severity-moyen { color: #ffb84d; }
+    .issue-severity-mineur { color: #b8bdc8; }
+    .must-check { color: #ffb84d; }
   `;
 
   const PHASES_DEF = [
@@ -270,6 +282,12 @@
       el("div", { class: "specs-body", id: "specs-body" }),
     ]);
 
+    // Carte fiabilité (specifique voiture, mais visible si data presente)
+    const reliabilityCard = el("details", { id: "reliability-card", class: "card hidden" }, [
+      el("summary", {}, [el("span", { id: "reliability-summary" }, "Fiabilité & pannes connues")]),
+      el("div", { class: "reliability-body", id: "reliability-body" }),
+    ]);
+
     const compaCard = el("details", { id: "comparables-card", class: "card hidden" }, [
       el("summary", {}, [el("span", { id: "comparables-summary" }, "Comparables")]),
       el("div", { class: "comparable-list", id: "comparables-list" }),
@@ -294,6 +312,7 @@
     main.appendChild(scoresCard);
     main.appendChild(synthCard);
     main.appendChild(specsCard);
+    main.appendChild(reliabilityCard);
     main.appendChild(compaCard);
     main.appendChild(actions);
     main.appendChild(logCard);
@@ -481,6 +500,88 @@
     card.classList.remove("hidden");
   }
 
+  // Bonus voiture : ajoute une section "À vérifier lors de l'essai" dans la carte synthèse
+  function renderMustCheck(shadow, mustCheck) {
+    const synthCard = shadow.getElementById("synth-card");
+    if (!synthCard || !mustCheck?.length) return;
+    const existing = synthCard.querySelector(".must-check-block");
+    if (existing) existing.remove();
+    const block = el("div", { class: "must-check-block", style: "margin-top: 10px;" }, [
+      el("strong", { html: "À vérifier lors de l'essai", style: "color: #ffb84d;" }),
+      el("ul", { class: "must-check", style: "margin: 4px 0 0; padding-left: 16px; font-size: 12px;" },
+        mustCheck.map((s) => el("li", {}, s))),
+    ]);
+    synthCard.appendChild(block);
+  }
+
+  // Rendu fiabilité voiture (score + pannes connues + must_check)
+  function renderReliability(shadow, reliability) {
+    const card = shadow.getElementById("reliability-card");
+    const body = shadow.getElementById("reliability-body");
+    const summary = shadow.getElementById("reliability-summary");
+    if (!card || !body) return;
+    if (!reliability) { card.classList.add("hidden"); return; }
+    body.innerHTML = "";
+
+    const score = reliability.reliability_score;
+    let scoreClass = "reliability-mid";
+    if (score != null) {
+      if (score >= 70) scoreClass = "reliability-good";
+      else if (score < 50) scoreClass = "reliability-bad";
+    }
+
+    if (score != null) {
+      body.appendChild(el("div", { style: "text-align: center; margin-bottom: 10px;" }, [
+        el("div", { class: "label", style: "font-size:10px; text-transform:uppercase; color:#6f7682;" }, "Score fiabilité"),
+        el("div", { class: `reliability-score ${scoreClass}` }, `${score}/100`),
+      ]));
+    }
+    if (reliability.consensus) {
+      body.appendChild(el("p", { class: "reasoning", style: "margin: 0 0 8px;" }, reliability.consensus));
+    }
+    if (reliability.risky_period) {
+      body.appendChild(el("p", { class: "reasoning", style: "margin: 0 0 8px; color: #ffb84d;" }, `⚠ Période à risque : ${reliability.risky_period}`));
+    }
+
+    const issues = reliability.known_issues || [];
+    if (issues.length) {
+      body.appendChild(el("strong", { html: "Pannes connues :" }));
+      const ul = el("ul", { class: "issues-list" });
+      for (const iss of issues) {
+        const sevClass = iss.severity ? `issue-severity-${iss.severity}` : "";
+        const sev = iss.severity ? ` [${iss.severity}]` : "";
+        const freq = iss.frequency ? ` (${iss.frequency.replace("_", " ")})` : "";
+        const cost = iss.fix_cost_eur ? ` — ~${iss.fix_cost_eur}€` : "";
+        const desc = iss.description ? ` — ${iss.description}` : "";
+        const symp = iss.symptoms ? ` (${iss.symptoms})` : "";
+        ul.appendChild(el("li", { class: sevClass }, [
+          el("strong", {}, iss.part),
+          `${sev}${freq}${cost}${desc}${symp}`,
+        ]));
+      }
+      body.appendChild(ul);
+    }
+
+    const mc = reliability.must_check || [];
+    if (mc.length) {
+      body.appendChild(el("strong", { html: "À vérifier obligatoirement :", style: "display:block; margin-top:8px;" }));
+      const ul = el("ul", { class: "issues-list must-check" });
+      for (const item of mc) ul.appendChild(el("li", {}, item));
+      body.appendChild(ul);
+    }
+
+    const strengths = reliability.strengths || [];
+    if (strengths.length) {
+      body.appendChild(el("strong", { html: "Points forts mécaniques :", style: "display:block; margin-top:8px; color:#4dd987;" }));
+      const ul = el("ul", { class: "issues-list", style: "color:#aaeab8;" });
+      for (const s of strengths) ul.appendChild(el("li", {}, s));
+      body.appendChild(ul);
+    }
+
+    if (summary) summary.textContent = `Fiabilité & pannes${score != null ? ` — ${score}/100` : ""}`;
+    card.classList.remove("hidden");
+  }
+
   function renderComparables(shadow, comparables) {
     const card = shadow.getElementById("comparables-card");
     const list = shadow.getElementById("comparables-list");
@@ -638,6 +739,9 @@
               renderScores(shadow, r);
               renderSynth(shadow, r);
               if (r.specs) renderSpecs(shadow, r.specs);
+              if (r.reliability) renderReliability(shadow, r.reliability);
+              // Pour voiture : afficher must_check du synth comme bonus dans la carte synthese
+              if (cat === "voiture" && r.must_check?.length) renderMustCheck(shadow, r.must_check);
             }
             break;
         }

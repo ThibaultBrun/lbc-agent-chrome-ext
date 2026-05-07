@@ -65,12 +65,20 @@
   // À garder synchrone avec lib/categories/<cat>/detect.js
   function detectCategory(ad) {
     const url = ad?.url || location.href;
+    // Vélo
     if (/leboncoin\.fr\/ad\/velos\//.test(url)) return "velo";
     if (/leboncoin\.fr\/ad\/(?:velos_speciaux|equipements_velos)\//.test(url)) return "velo";
+    // Voiture
+    if (/leboncoin\.fr\/ad\/voitures\//.test(url)) return "voiture";
+    if (/leboncoin\.fr\/ad\/(?:voitures_a_collectionner|utilitaires)\//.test(url)) return "voiture";
+
     const cat = String(ad?.category_id || ad?.category_name || "").toLowerCase();
     if (cat === "24" || cat.includes("velo") || cat.includes("vélo")) return "velo";
+    if (cat === "2" || cat === "5" || cat.includes("voiture") || cat.includes("utilitaire")) return "voiture";
+
     const title = (ad?.subject || "").toLowerCase();
     if (/\b(velo|vélo|vtt|vtc|vae|vttae|gravel|bmx|cyclo)\b/.test(title)) return "velo";
+    if (/\b(voiture|berline|citadine|suv|crossover|coupe|cabriolet|monospace|break|utilitaire|4x4)\b/.test(title)) return "voiture";
     return "default";
   }
 
